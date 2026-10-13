@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="logo-title">
+<title id="logo-title">WinDroid Capture — Phone Lens</title>
+<metadata>Refined Phone Lens from concept-sheet revision 2. Lens ring remains wholly inside the phone screen. Dark desktop icon variant; explicit colors; transparent outer corners.</metadata>
+<rect width="256" height="256" rx="12" fill="#191c20"/>
+<g transform="translate(14.6 20) scale(1.08)">
+<path fill="#ffffff" fill-rule="evenodd" d="M48 12H120Q134 12 134 26V174Q134 188 120 188H48Q34 188 34 174V26Q34 12 48 12ZM48 38V166H120V38Z" />
+      
+<rect x="73" y="23" width="22" height="5" rx="2" fill="#191c20" />
+      
+<rect x="73" y="176" width="22" height="4" rx="2" fill="#191c20" />
+      
+<circle cx="84" cy="102" r="27" fill="#191c20" stroke="#1688f0" stroke-width="7" />
+      
+<circle cx="84" cy="102" r="19" fill="#ffffff" />
+      
+<circle cx="78" cy="96" r="4" fill="#191c20" />
+      
+<path fill="#1688f0" d="M134 85L168 65Q176 61 176 70V134Q176 143 168 139L134 119Z" />
+    
+</g>
+</svg>

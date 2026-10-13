@@ -1,0 +1,26 @@
+/build/
+/build-native/
+/build-driver/
+/dist/
+/tools/
+# Raw diagnostics, device identifiers, captures and local test history.
+/evidence/
+# User settings, credentials and local development artifacts.
+*.dpapi
+*.dpapi.*
+.env
+.env.*
+!.env.example
+*.pem
+*.pfx
+*.p12
+*.key
+*.log
+*.pid
+*.dmp
+__pycache__/
+*.py[cod]
+.vs/
+.idea/
+*.user
+*.pdb

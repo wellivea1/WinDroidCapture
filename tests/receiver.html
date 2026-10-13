@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WinDroid Capture — local receiver test</title>
+<style>body{font:16px system-ui;color:#e8edf5;background:#101721;max-width:1050px;margin:30px auto;padding:0 22px}h1{font-size:28px}fieldset{border:1px solid #4a5970;border-radius:8px;margin:18px 0;padding:18px}label{display:block;margin:12px 0 5px}select,input,button{font:inherit;padding:9px;border-radius:5px;background:#202e41;color:inherit;border:1px solid #60728e}select{width:100%}button{margin:10px 12px 5px 0;cursor:pointer}video{width:100%;max-height:520px;background:#000}pre{white-space:pre-wrap;overflow-wrap:anywhere;padding:16px;background:#172334;border-radius:8px}meter{width:100%;height:28px}.note{color:#bac9df;line-height:1.5}</style>
+<h1>WinDroid Capture — local receiver test</h1>
+<p class="note">This page stays on this PC. It makes no calls, sends no media to a server, records nothing, and does not play the microphone through speakers. Device discovery, OBS output, and receiving usable phone video/audio are separate tests.</p>
+<fieldset><legend>Choose both endpoints explicitly</legend>
+<button id="refresh">Refresh device list</button>
+<label for="videoDevice">Webcam — select the actual OBS Virtual Camera entry</label><select id="videoDevice"><option value="">Choose explicitly</option></select>
+<label for="audioDevice">Microphone — select your virtual cable's recording endpoint</label><select id="audioDevice"><option value="">Choose explicitly</option></select>
+<label for="expectedMic">Expected microphone label (edit for another virtual cable)</label><input id="expectedMic" style="width:95%" value="CABLE Output (VB-Audio Virtual Cable)">
+<p class="note">First use: this page does not open unidentified/default inputs just to trigger a browser permission prompt. If labels are withheld, manually allow camera and microphone for this localhost page through browser site controls and refresh. If your browser cannot pregrant those permissions, use the supplied native C receiver instead; it selects the exact Windows endpoints directly. This page refuses default, unselected, or non-OBS cameras.</p>
+<details><summary>Native receiver command (no browser permission prompt)</summary><pre>awm-receiver.exe --camera "OBS Virtual Camera" --microphone "CABLE Output (VB-Audio Virtual Cable)" --duration 180</pre><p class="note">Run from the published package, or use build/awm-receiver.exe from the source workspace. Substitute your exact cable recording name. The helper displays local video and a meter, records nothing, and does not play through speakers.</p></details>
+<button id="start">Start selected local receiver</button><button id="stop">Stop receiver</button></fieldset>
+<video id="view" autoplay playsinline muted></video>
+<label for="level">Selected recording endpoint signal — no speaker monitoring</label><meter id="level" min="0" max="1" value="0"></meter>
+<pre id="status">Receiver NOT RUN. Select both intended devices.</pre>
+<fieldset><legend>Physical verification (requires a person at the phone)</legend><ol>
+<li>Point the selected phone camera at a distinctive object and move it. Confirm it appears here, not the PC's webcam.</li>
+<li>Speak a unique phrase into the phone and lightly tap near its microphone. The cable meter must follow the phone pattern; silence other apps using the cable.</li>
+<li>Use a visible clap/tap for synchronization. Watch the hands meet and the meter transient. Record observations manually; this page does not claim a latency measurement.</li>
+<li>Test output rotation and mirroring by showing written text and an asymmetric object. This page applies no additional mirror transform.</li>
+<li>Press Stop in the manager while leaving this receiver running. Confirm the phone image and signal cease. Test unplug/reconnect and a sustained session.</li>
+</ol><p class="note">The reported receiver dimensions are its negotiated format. An upstream 720p OBS output can be rescaled into a larger receiver format; that does not establish genuine 1080p/4K detail.</p></fieldset>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);let stream=null,context=null,analyser=null,timer=0,frames=0,startTime=0,frameToken=0;let devices=[];
+function say(text){$('status').textContent=text;}
+async function refresh(){try{devices=await navigator.mediaDevices.enumerateDevices();for(const [kind,id]of[['videoinput','videoDevice'],['audioinput','audioDevice']]){const selected=$(id).value;$(id).replaceChildren(new Option('Choose explicitly',''));let n=0;for(const d of devices.filter(d=>d.kind===kind)){if(d.deviceId==='default'||d.deviceId==='communications')continue;$(id).add(new Option(d.label||`${kind} ${++n} (label withheld)`,d.deviceId));}$(id).value=selected;}if(!devices.some(d=>d.label))say('Device labels are withheld. This page does not open unidentified/default inputs to trigger permission. Pregrant localhost permissions through browser site controls and refresh, or use the supplied native receiver command. No default capture was opened.');}catch(e){say(`Enumeration failed: ${e.name}: ${e.message}`);}}
+function stop(){if(stream)for(const t of stream.getTracks())t.stop();stream=null;if(context)context.close();context=null;cancelAnimationFrame(timer);if(frameToken&&$('view').cancelVideoFrameCallback)$('view').cancelVideoFrameCallback(frameToken);$('view').srcObject=null;$('level').value=0;say('Receiver stopped; selected tracks ended. No media was recorded.');}
+async function start(){const videoId=$('videoDevice').value,audioId=$('audioDevice').value;const video=devices.find(d=>d.deviceId===videoId&&d.kind==='videoinput'),audio=devices.find(d=>d.deviceId===audioId&&d.kind==='audioinput');
+ if(!video||!audio||!videoId||!audioId)return say('Choose the intended webcam and cable recording endpoint explicitly. No fallback is allowed.');
+ if(!video.label||!audio.label)return say('Labels must be visible before starting. Grant permissions for this page and refresh; no unidentified device will be opened.');
+ if(video.label!=='OBS Virtual Camera')return say(`Refused camera '${video.label}'. Select OBS Virtual Camera explicitly.`);
+ if(audio.label!==$('expectedMic').value.trim())return say(`Refused microphone '${audio.label}'. Select the intended cable RECORDING endpoint and confirm its exact friendly label.`);
+ stop();try{stream=await navigator.mediaDevices.getUserMedia({video:{deviceId:{exact:videoId}},audio:{deviceId:{exact:audioId},echoCancellation:false,noiseSuppression:false,autoGainControl:false}});let vt=stream.getVideoTracks()[0],at=stream.getAudioTracks()[0];
+ if(!vt||!at||vt.getSettings().deviceId!==videoId||at.getSettings().deviceId!==audioId){stop();throw new Error('Browser did not return the explicitly selected endpoints.');}
+ $('view').srcObject=stream;context=new AudioContext();await context.resume();analyser=context.createAnalyser();analyser.fftSize=2048;context.createMediaStreamSource(new MediaStream(stream.getAudioTracks())).connect(analyser); // No connection to speakers.
+ const samples=new Float32Array(analyser.fftSize);frames=0;startTime=performance.now();const settings={webcam:vt.label,video:vt.getSettings(),microphone:at.label,audio:at.getSettings()};
+ function render(){if(!stream)return;analyser.getFloatTimeDomainData(samples);let peak=0;for(const s of samples)peak=Math.max(peak,Math.abs(s));$('level').value=peak;const elapsed=(performance.now()-startTime)/1000;say(`Selected receiver tracks active for ${elapsed.toFixed(1)} seconds.\nBrowser displayed frame callbacks: ${frames}; observed average ${(frames/Math.max(elapsed,1)).toFixed(2)} per second.\nCurrent cable peak: ${peak.toFixed(4)}\n\nNegotiated settings:\n${JSON.stringify(settings,null,2)}\n\nPhone-specific video identity, microphone source, orientation, mirroring, clap synchronization, and disconnect behavior require the physical checks below. A level or active track alone does not prove the phone signal.`);timer=requestAnimationFrame(render);}
+ function videoFrame(){if(!stream)return;frames++;frameToken=$('view').requestVideoFrameCallback(videoFrame);}if($('view').requestVideoFrameCallback)frameToken=$('view').requestVideoFrameCallback(videoFrame);render();
+ for(const t of stream.getTracks()){t.onended=()=>say(`Selected ${t.kind} track ended; verify manager disconnect/stop cleanup.`);t.onmute=()=>say(`Selected ${t.kind} track muted; output may be disconnected.`);}
+ }catch(e){stop();say(`Selected receiver failed: ${e.name}: ${e.message}. No fallback device was used.`);}}
+$('refresh').onclick=refresh;$('start').onclick=start;$('stop').onclick=stop;navigator.mediaDevices?.addEventListener('devicechange',refresh);window.addEventListener('pagehide',stop);if(navigator.mediaDevices)refresh();else say('Use http://127.0.0.1 through the provided server in a browser that supports mediaDevices.');
+</script></html>

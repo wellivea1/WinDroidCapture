@@ -1,0 +1,11 @@
+Generated using the built-in image_gen editing tool on 2026-10-13.
+Edit target: android-webcam-logo-concepts-v1.png, preserved beside this revision.
+
+Use case: logo-brand.
+Edit target: the attached six-concept Android Webcam Manager logo board.
+Primary request: Rename the project to exactly "WinDroid Capture" and update this concept board to the new branding.
+Change every occurrence of "Android Webcam Manager", including the large board title and all six wordmarks, to exactly "WinDroid Capture". Preserve the mixed-case spelling: uppercase W and D in WinDroid, uppercase C in Capture. In the six wordmarks, make "WinDroid" charcoal and "Capture" blue on light backgrounds, using the same clean sans-serif style as the existing board.
+Change the third label from "03 AWM MONOGRAM" to "03 WDC MONOGRAM". Redesign only the third symbol and its three small versions as an original compact angular monogram using W, D, and C. Ensure the W/D/C forms are recognizable; do not retain the previous A/W/A-shaped mark. Use a strong, well balanced silhouette, substantial strokes and clear negative space. Keep the third cell aligned with the others.
+Preserve invariants: the exact six-cell layout, the six concept numbers, the other five concept names, all mark geometry in cells 01, 02, 04, 05, and 06, the blue and charcoal palette, comparison swatches, monochrome samples, grid dividers, overall spacing, and the "LOGO CONCEPTS" subtitle. Adjust wordmark size only as needed to keep every name centered and comfortably inside its cell.
+Keep the result crisp, professional, and suited to later vector implementation. No new logos, mascots, brand symbols, slogans, registration symbols, background decoration, or application screenshots. This is a non-destructive branding update to the concept sheet.
+

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations"><ProjectConfiguration Include="Release|x64"><Configuration>Release</Configuration><Platform>x64</Platform></ProjectConfiguration></ItemGroup>
+  <PropertyGroup Label="Globals"><ProjectGuid>{D3F875C1-9354-4B10-9001-995DB5CDCB78}</ProjectGuid><RootNamespace>AwmMic</RootNamespace><WindowsTargetPlatformVersion>10.0.28000.0</WindowsTargetPlatformVersion></PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration"><ConfigurationType>Driver</ConfigurationType><DriverType>WDM</DriverType><PlatformToolset>WindowsKernelModeDriver10.0</PlatformToolset><DriverTargetPlatform>Universal</DriverTargetPlatform><TargetVersion>Windows10</TargetVersion><UseDebugLibraries>false</UseDebugLibraries></PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup><TargetName>awm_mic</TargetName><OutDir>$(ProjectDir)..\..\build-driver\</OutDir><IntDir>$(ProjectDir)..\..\build-driver\obj\</IntDir><SignMode>Off</SignMode><RunInf2Cat>false</RunInf2Cat><ApiValidator_ApiExtractorExePath>$(WDKContentRoot)bin\10.0.28000.0\x64</ApiValidator_ApiExtractorExePath></PropertyGroup>
+  <ItemDefinitionGroup><ClCompile><CompileAs>CompileAsC</CompileAs><WarningLevel>Level4</WarningLevel><TreatWarningAsError>false</TreatWarningAsError><LanguageStandard_C>stdc17</LanguageStandard_C><PreprocessorDefinitions>AWM_KERNEL;_AMD64_;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile><Link><AdditionalDependencies>portcls.lib;ks.lib;ksguid.lib;wdmsec.lib;%(AdditionalDependencies)</AdditionalDependencies><EntryPointSymbol>DriverEntry</EntryPointSymbol></Link></ItemDefinitionGroup>
+  <ItemGroup><ClCompile Include="driver.c" /><ClCompile Include="mic_ring.c" /></ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

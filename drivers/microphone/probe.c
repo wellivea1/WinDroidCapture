@@ -1,0 +1,4 @@
+#define INTERFACE IUnknown
+#include <portcls.h>
+DRIVER_INITIALIZE DriverEntry;
+NTSTATUS DriverEntry(PDRIVER_OBJECT driver,PUNICODE_STRING registry){UNREFERENCED_PARAMETER(driver);UNREFERENCED_PARAMETER(registry);return STATUS_SUCCESS;}

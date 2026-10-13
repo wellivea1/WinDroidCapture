@@ -1,0 +1,258 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1536" height="1024" viewBox="0 0 1536 1024" role="img" aria-labelledby="sheet-title sheet-description">
+  <title id="sheet-title">WinDroid Capture — six logo concepts</title>
+  <desc id="sheet-description">Editable vector concept sheet for a Windows Android camera and screen capture application. Six directions: Phone Lens, Frame Bridge, WDC Monogram, Capture Port, Signal Window, Pixel Aperture. Each includes a main light version, a dark version, monochrome and an actual 24-pixel-size sample.</desc>
+  <metadata>Created 2026-10-13. Flat SVG interpretation of windroid-capture-logo-concepts-v1.png. All marks are paths and shapes with explicit colors; text stays editable. No CSS custom properties or external assets. Original Android Webcam Manager concept board is preserved. Blue #1688f0, charcoal #191c20.</metadata>
+  <defs>
+    <style>
+      svg { color: #191c20; }
+      text { font-family: "Segoe UI", Arial, sans-serif; }
+      .heading { font-size: 52px; font-weight: 700; letter-spacing: -1.8px; }
+      .subtitle { font-size: 22px; font-weight: 600; letter-spacing: 5px; fill: #646b72; }
+      .label { font-size: 23px; font-weight: 600; fill: #646b72; letter-spacing: .6px; }
+      .wordmark { font-size: 32px; font-weight: 700; letter-spacing: -.8px; fill: #191c20; }
+      .sample-label { font-size: 12px; fill: #646b72; }
+    </style>
+    <symbol id="phone-lens" viewBox="0 0 200 200">
+      <path fill="#191c20" fill-rule="evenodd" d="M48 12H120Q134 12 134 26V174Q134 188 120 188H48Q34 188 34 174V26Q34 12 48 12ZM48 38V166H120V38Z"/>
+      <rect x="73" y="23" width="22" height="5" rx="2" fill="#fbfcfd"/>
+      <rect x="73" y="176" width="22" height="4" rx="2" fill="#fbfcfd"/>
+      <circle cx="84" cy="102" r="34" fill="#fbfcfd" stroke="#1688f0" stroke-width="8"/>
+      <circle cx="84" cy="102" r="24" fill="#191c20"/>
+      <circle cx="77" cy="94" r="5" fill="#fbfcfd"/>
+      <path fill="#1688f0" d="M134 85L168 65Q176 61 176 70V134Q176 143 168 139L134 119Z"/>
+    </symbol>
+    <symbol id="phone-lens-dark" viewBox="0 0 200 200">
+      <path fill="#ffffff" fill-rule="evenodd" d="M48 12H120Q134 12 134 26V174Q134 188 120 188H48Q34 188 34 174V26Q34 12 48 12ZM48 38V166H120V38Z"/>
+      <rect x="73" y="23" width="22" height="5" rx="2" fill="#191c20"/>
+      <rect x="73" y="176" width="22" height="4" rx="2" fill="#191c20"/>
+      <circle cx="84" cy="102" r="34" fill="#191c20" stroke="#1688f0" stroke-width="8"/>
+      <circle cx="84" cy="102" r="24" fill="#ffffff"/>
+      <circle cx="77" cy="94" r="5" fill="#191c20"/>
+      <path fill="#1688f0" d="M134 85L168 65Q176 61 176 70V134Q176 143 168 139L134 119Z"/>
+    </symbol>
+    <symbol id="phone-lens-mono" viewBox="0 0 200 200">
+      <path fill="#191c20" fill-rule="evenodd" d="M48 12H120Q134 12 134 26V174Q134 188 120 188H48Q34 188 34 174V26Q34 12 48 12ZM48 38V166H120V38Z"/>
+      <rect x="73" y="23" width="22" height="5" rx="2" fill="#f0f2f5"/>
+      <rect x="73" y="176" width="22" height="4" rx="2" fill="#f0f2f5"/>
+      <circle cx="84" cy="102" r="34" fill="#f0f2f5" stroke="#191c20" stroke-width="8"/>
+      <circle cx="84" cy="102" r="24" fill="#191c20"/>
+      <circle cx="77" cy="94" r="5" fill="#f0f2f5"/>
+      <path fill="#191c20" d="M134 85L168 65Q176 61 176 70V134Q176 143 168 139L134 119Z"/>
+    </symbol>
+    <symbol id="frame-bridge" viewBox="0 0 200 200">
+      <path fill="#191c20" fill-rule="evenodd" d="M30 14H92Q106 14 106 28V172Q106 186 92 186H30Q16 186 16 172V28Q16 14 30 14ZM28 38V162H94V38Z"/>
+      <rect x="51" y="24" width="21" height="5" rx="2" fill="#fbfcfd"/>
+      <rect x="51" y="174" width="21" height="4" rx="2" fill="#fbfcfd"/>
+      <path fill="#1688f0" d="M98 88H75Q63 88 63 100V126Q63 138 75 138H110V124H79V102H110V88Z"/>
+      <path fill="#191c20" fill-rule="evenodd" d="M116 60H177Q190 60 190 73V143Q190 156 177 156H116Q103 156 103 143V73Q103 60 116 60ZM115 73V143H178V73Z"/>
+      <path fill="#1688f0" d="M137 86Q132 83 132 89V128Q132 134 137 131L164 112Q169 109 164 105Z"/>
+    </symbol>
+    <symbol id="frame-bridge-dark" viewBox="0 0 200 200">
+      <path fill="#ffffff" fill-rule="evenodd" d="M30 14H92Q106 14 106 28V172Q106 186 92 186H30Q16 186 16 172V28Q16 14 30 14ZM28 38V162H94V38Z"/>
+      <rect x="51" y="24" width="21" height="5" rx="2" fill="#191c20"/>
+      <rect x="51" y="174" width="21" height="4" rx="2" fill="#191c20"/>
+      <path fill="#1688f0" d="M98 88H75Q63 88 63 100V126Q63 138 75 138H110V124H79V102H110V88Z"/>
+      <path fill="#ffffff" fill-rule="evenodd" d="M116 60H177Q190 60 190 73V143Q190 156 177 156H116Q103 156 103 143V73Q103 60 116 60ZM115 73V143H178V73Z"/>
+      <path fill="#1688f0" d="M137 86Q132 83 132 89V128Q132 134 137 131L164 112Q169 109 164 105Z"/>
+    </symbol>
+    <symbol id="frame-bridge-mono" viewBox="0 0 200 200">
+      <path fill="#191c20" fill-rule="evenodd" d="M30 14H92Q106 14 106 28V172Q106 186 92 186H30Q16 186 16 172V28Q16 14 30 14ZM28 38V162H94V38Z"/>
+      <rect x="51" y="24" width="21" height="5" rx="2" fill="#f0f2f5"/>
+      <rect x="51" y="174" width="21" height="4" rx="2" fill="#f0f2f5"/>
+      <path fill="#191c20" d="M98 88H75Q63 88 63 100V126Q63 138 75 138H110V124H79V102H110V88Z"/>
+      <path fill="#191c20" fill-rule="evenodd" d="M116 60H177Q190 60 190 73V143Q190 156 177 156H116Q103 156 103 143V73Q103 60 116 60ZM115 73V143H178V73Z"/>
+      <path fill="#191c20" d="M137 86Q132 83 132 89V128Q132 134 137 131L164 112Q169 109 164 105Z"/>
+    </symbol>
+    <symbol id="wdc-monogram" viewBox="0 0 248 108">
+      <path fill="#191c20" d="M0 24H22L43 72L60 45L78 72L99 24H121L86 99H74L60 77L46 99H34Z"/>
+      <path fill="#1688f0" fill-rule="evenodd" d="M105 12H141Q186 12 186 54Q186 96 141 96H105L114 77H141Q166 77 166 54Q166 31 141 31H96ZM116 42H140Q154 42 154 54Q154 66 140 66H116Z"/>
+      <path fill="#191c20" d="M246 26L231 12H203L187 28V80L203 96H231L246 82H221L214 78H207L200 71V37L207 30H214L221 26Z"/>
+    </symbol>
+    <symbol id="wdc-monogram-dark" viewBox="0 0 248 108">
+      <path fill="#ffffff" d="M0 24H22L43 72L60 45L78 72L99 24H121L86 99H74L60 77L46 99H34Z"/>
+      <path fill="#1688f0" fill-rule="evenodd" d="M105 12H141Q186 12 186 54Q186 96 141 96H105L114 77H141Q166 77 166 54Q166 31 141 31H96ZM116 42H140Q154 42 154 54Q154 66 140 66H116Z"/>
+      <path fill="#ffffff" d="M246 26L231 12H203L187 28V80L203 96H231L246 82H221L214 78H207L200 71V37L207 30H214L221 26Z"/>
+    </symbol>
+    <symbol id="wdc-monogram-mono" viewBox="0 0 248 108">
+      <path fill="#191c20" d="M0 24H22L43 72L60 45L78 72L99 24H121L86 99H74L60 77L46 99H34Z"/>
+      <path fill="#191c20" fill-rule="evenodd" d="M105 12H141Q186 12 186 54Q186 96 141 96H105L114 77H141Q166 77 166 54Q166 31 141 31H96ZM116 42H140Q154 42 154 54Q154 66 140 66H116Z"/>
+      <path fill="#191c20" d="M246 26L231 12H203L187 28V80L203 96H231L246 82H221L214 78H207L200 71V37L207 30H214L221 26Z"/>
+    </symbol>
+    <symbol id="capture-port" viewBox="0 0 200 200">
+      <path d="M29 62V29H62M138 29H171V62M171 138V171H138M62 171H29V138" fill="none" stroke="#191c20" stroke-width="14" stroke-linejoin="miter"/>
+      <circle cx="93" cy="100" r="35" fill="#191c20"/>
+      <circle cx="93" cy="100" r="23" fill="#fbfcfd"/>
+      <circle cx="93" cy="100" r="18" fill="#191c20"/>
+      <circle cx="87" cy="94" r="4" fill="#fbfcfd"/>
+      <path d="M127 68A45 45 0 0 1 127 132" fill="none" stroke="#1688f0" stroke-width="13"/>
+    </symbol>
+    <symbol id="capture-port-dark" viewBox="0 0 200 200">
+      <path d="M29 62V29H62M138 29H171V62M171 138V171H138M62 171H29V138" fill="none" stroke="#ffffff" stroke-width="14" stroke-linejoin="miter"/>
+      <circle cx="93" cy="100" r="35" fill="#ffffff"/>
+      <circle cx="93" cy="100" r="23" fill="#191c20"/>
+      <circle cx="93" cy="100" r="18" fill="#ffffff"/>
+      <circle cx="87" cy="94" r="4" fill="#191c20"/>
+      <path d="M127 68A45 45 0 0 1 127 132" fill="none" stroke="#1688f0" stroke-width="13"/>
+    </symbol>
+    <symbol id="capture-port-mono" viewBox="0 0 200 200">
+      <path d="M29 62V29H62M138 29H171V62M171 138V171H138M62 171H29V138" fill="none" stroke="#191c20" stroke-width="14" stroke-linejoin="miter"/>
+      <circle cx="93" cy="100" r="35" fill="#191c20"/>
+      <circle cx="93" cy="100" r="23" fill="#f0f2f5"/>
+      <circle cx="93" cy="100" r="18" fill="#191c20"/>
+      <circle cx="87" cy="94" r="4" fill="#f0f2f5"/>
+      <path d="M127 68A45 45 0 0 1 127 132" fill="none" stroke="#191c20" stroke-width="13"/>
+    </symbol>
+    <symbol id="signal-window" viewBox="0 0 200 200">
+      <path fill="#191c20" fill-rule="evenodd" d="M28 40H137Q150 40 150 53V147Q150 160 137 160H28Q15 160 15 147V53Q15 40 28 40ZM28 53V147H137V53Z"/>
+      <rect x="43" y="110" width="17" height="24" rx="2" fill="#1688f0"/>
+      <rect x="71" y="91" width="17" height="43" rx="2" fill="#1688f0"/>
+      <rect x="99" y="71" width="17" height="63" rx="2" fill="#1688f0"/>
+      <path fill="#191c20" d="M157 83L181 69Q188 65 188 73V128Q188 136 181 132L157 118Z"/>
+    </symbol>
+    <symbol id="signal-window-dark" viewBox="0 0 200 200">
+      <path fill="#ffffff" fill-rule="evenodd" d="M28 40H137Q150 40 150 53V147Q150 160 137 160H28Q15 160 15 147V53Q15 40 28 40ZM28 53V147H137V53Z"/>
+      <rect x="43" y="110" width="17" height="24" rx="2" fill="#1688f0"/>
+      <rect x="71" y="91" width="17" height="43" rx="2" fill="#1688f0"/>
+      <rect x="99" y="71" width="17" height="63" rx="2" fill="#1688f0"/>
+      <path fill="#ffffff" d="M157 83L181 69Q188 65 188 73V128Q188 136 181 132L157 118Z"/>
+    </symbol>
+    <symbol id="signal-window-mono" viewBox="0 0 200 200">
+      <path fill="#191c20" fill-rule="evenodd" d="M28 40H137Q150 40 150 53V147Q150 160 137 160H28Q15 160 15 147V53Q15 40 28 40ZM28 53V147H137V53Z"/>
+      <rect x="43" y="110" width="17" height="24" rx="2" fill="#191c20"/>
+      <rect x="71" y="91" width="17" height="43" rx="2" fill="#191c20"/>
+      <rect x="99" y="71" width="17" height="63" rx="2" fill="#191c20"/>
+      <path fill="#191c20" d="M157 83L181 69Q188 65 188 73V128Q188 136 181 132L157 118Z"/>
+    </symbol>
+    <symbol id="pixel-aperture" viewBox="0 0 200 200">
+      <path fill="#191c20" d="M20 45L45 20H98L78 64L54 88H20Z"/>
+      <path fill="#1688f0" d="M108 20H155L180 45V98L136 78L112 54Z"/>
+      <path fill="#191c20" d="M180 108V155L155 180H102L122 136L146 112Z"/>
+      <path fill="#191c20" d="M92 180H45L20 155V102L64 122L88 146Z"/>
+    </symbol>
+    <symbol id="pixel-aperture-dark" viewBox="0 0 200 200">
+      <path fill="#ffffff" d="M20 45L45 20H98L78 64L54 88H20Z"/>
+      <path fill="#1688f0" d="M108 20H155L180 45V98L136 78L112 54Z"/>
+      <path fill="#ffffff" d="M180 108V155L155 180H102L122 136L146 112Z"/>
+      <path fill="#ffffff" d="M92 180H45L20 155V102L64 122L88 146Z"/>
+    </symbol>
+    <symbol id="pixel-aperture-mono" viewBox="0 0 200 200">
+      <path fill="#191c20" d="M20 45L45 20H98L78 64L54 88H20Z"/>
+      <path fill="#191c20" d="M108 20H155L180 45V98L136 78L112 54Z"/>
+      <path fill="#191c20" d="M180 108V155L155 180H102L122 136L146 112Z"/>
+      <path fill="#191c20" d="M92 180H45L20 155V102L64 122L88 146Z"/>
+    </symbol>
+  </defs>
+  <rect width="1536" height="1024" fill="#fbfcfd"/>
+  <text class="heading" x="768" y="72" text-anchor="middle">WinDroid Capture</text>
+  <text class="subtitle" x="768" y="106" text-anchor="middle">LOGO CONCEPTS</text>
+  <path d="M24 128H1512V980H24ZM520 128V980M1016 128V980M24 554H1512" fill="none" stroke="#d8dde3" stroke-width="1"/>
+  <g id="concept-1" transform="translate(24 128)">
+    <title>01  PHONE LENS — WinDroid Capture logo concept</title>
+    <text class="label" x="22" y="33">01  PHONE LENS</text>
+    <use href="#phone-lens" x="128" y="59" width="240" height="218"/>
+    <text class="wordmark" x="248" y="294" text-anchor="middle">WinDroid <tspan fill="#1688f0">Capture</tspan></text>
+    <g class="dark">
+      <rect x="111" y="314" width="80" height="80" rx="6" fill="#191c20"/>
+      <use href="#phone-lens-dark" x="122" y="325" width="58" height="58"/>
+    </g>
+    <g class="mono">
+      <rect x="224" y="314" width="80" height="80" rx="6" fill="#f0f2f5"/>
+      <use href="#phone-lens-mono" x="235" y="325" width="58" height="58"/>
+    </g>
+    <use href="#phone-lens" x="363" y="342" width="24" height="24"/>
+    <text class="sample-label" x="151" y="412" text-anchor="middle">Dark</text>
+    <text class="sample-label" x="264" y="412" text-anchor="middle">Monochrome</text>
+    <text class="sample-label" x="375" y="412" text-anchor="middle">24 px</text>
+  </g>
+  <g id="concept-2" transform="translate(520 128)">
+    <title>02  FRAME BRIDGE — WinDroid Capture logo concept</title>
+    <text class="label" x="22" y="33">02  FRAME BRIDGE</text>
+    <use href="#frame-bridge" x="128" y="59" width="240" height="218"/>
+    <text class="wordmark" x="248" y="294" text-anchor="middle">WinDroid <tspan fill="#1688f0">Capture</tspan></text>
+    <g class="dark">
+      <rect x="111" y="314" width="80" height="80" rx="6" fill="#191c20"/>
+      <use href="#frame-bridge-dark" x="122" y="325" width="58" height="58"/>
+    </g>
+    <g class="mono">
+      <rect x="224" y="314" width="80" height="80" rx="6" fill="#f0f2f5"/>
+      <use href="#frame-bridge-mono" x="235" y="325" width="58" height="58"/>
+    </g>
+    <use href="#frame-bridge" x="363" y="342" width="24" height="24"/>
+    <text class="sample-label" x="151" y="412" text-anchor="middle">Dark</text>
+    <text class="sample-label" x="264" y="412" text-anchor="middle">Monochrome</text>
+    <text class="sample-label" x="375" y="412" text-anchor="middle">24 px</text>
+  </g>
+  <g id="concept-3" transform="translate(1016 128)">
+    <title>03  WDC MONOGRAM — WinDroid Capture logo concept</title>
+    <text class="label" x="22" y="33">03  WDC MONOGRAM</text>
+    <use href="#wdc-monogram" x="128" y="59" width="240" height="218"/>
+    <text class="wordmark" x="248" y="294" text-anchor="middle">WinDroid <tspan fill="#1688f0">Capture</tspan></text>
+    <g class="dark">
+      <rect x="111" y="314" width="80" height="80" rx="6" fill="#191c20"/>
+      <use href="#wdc-monogram-dark" x="122" y="325" width="58" height="58"/>
+    </g>
+    <g class="mono">
+      <rect x="224" y="314" width="80" height="80" rx="6" fill="#f0f2f5"/>
+      <use href="#wdc-monogram-mono" x="235" y="325" width="58" height="58"/>
+    </g>
+    <use href="#wdc-monogram" x="363" y="342" width="24" height="24"/>
+    <text class="sample-label" x="151" y="412" text-anchor="middle">Dark</text>
+    <text class="sample-label" x="264" y="412" text-anchor="middle">Monochrome</text>
+    <text class="sample-label" x="375" y="412" text-anchor="middle">24 px</text>
+  </g>
+  <g id="concept-4" transform="translate(24 554)">
+    <title>04  CAPTURE PORT — WinDroid Capture logo concept</title>
+    <text class="label" x="22" y="33">04  CAPTURE PORT</text>
+    <use href="#capture-port" x="128" y="59" width="240" height="218"/>
+    <text class="wordmark" x="248" y="294" text-anchor="middle">WinDroid <tspan fill="#1688f0">Capture</tspan></text>
+    <g class="dark">
+      <rect x="111" y="314" width="80" height="80" rx="6" fill="#191c20"/>
+      <use href="#capture-port-dark" x="122" y="325" width="58" height="58"/>
+    </g>
+    <g class="mono">
+      <rect x="224" y="314" width="80" height="80" rx="6" fill="#f0f2f5"/>
+      <use href="#capture-port-mono" x="235" y="325" width="58" height="58"/>
+    </g>
+    <use href="#capture-port" x="363" y="342" width="24" height="24"/>
+    <text class="sample-label" x="151" y="412" text-anchor="middle">Dark</text>
+    <text class="sample-label" x="264" y="412" text-anchor="middle">Monochrome</text>
+    <text class="sample-label" x="375" y="412" text-anchor="middle">24 px</text>
+  </g>
+  <g id="concept-5" transform="translate(520 554)">
+    <title>05  SIGNAL WINDOW — WinDroid Capture logo concept</title>
+    <text class="label" x="22" y="33">05  SIGNAL WINDOW</text>
+    <use href="#signal-window" x="128" y="59" width="240" height="218"/>
+    <text class="wordmark" x="248" y="294" text-anchor="middle">WinDroid <tspan fill="#1688f0">Capture</tspan></text>
+    <g class="dark">
+      <rect x="111" y="314" width="80" height="80" rx="6" fill="#191c20"/>
+      <use href="#signal-window-dark" x="122" y="325" width="58" height="58"/>
+    </g>
+    <g class="mono">
+      <rect x="224" y="314" width="80" height="80" rx="6" fill="#f0f2f5"/>
+      <use href="#signal-window-mono" x="235" y="325" width="58" height="58"/>
+    </g>
+    <use href="#signal-window" x="363" y="342" width="24" height="24"/>
+    <text class="sample-label" x="151" y="412" text-anchor="middle">Dark</text>
+    <text class="sample-label" x="264" y="412" text-anchor="middle">Monochrome</text>
+    <text class="sample-label" x="375" y="412" text-anchor="middle">24 px</text>
+  </g>
+  <g id="concept-6" transform="translate(1016 554)">
+    <title>06  PIXEL APERTURE — WinDroid Capture logo concept</title>
+    <text class="label" x="22" y="33">06  PIXEL APERTURE</text>
+    <use href="#pixel-aperture" x="128" y="59" width="240" height="218"/>
+    <text class="wordmark" x="248" y="294" text-anchor="middle">WinDroid <tspan fill="#1688f0">Capture</tspan></text>
+    <g class="dark">
+      <rect x="111" y="314" width="80" height="80" rx="6" fill="#191c20"/>
+      <use href="#pixel-aperture-dark" x="122" y="325" width="58" height="58"/>
+    </g>
+    <g class="mono">
+      <rect x="224" y="314" width="80" height="80" rx="6" fill="#f0f2f5"/>
+      <use href="#pixel-aperture-mono" x="235" y="325" width="58" height="58"/>
+    </g>
+    <use href="#pixel-aperture" x="363" y="342" width="24" height="24"/>
+    <text class="sample-label" x="151" y="412" text-anchor="middle">Dark</text>
+    <text class="sample-label" x="264" y="412" text-anchor="middle">Monochrome</text>
+    <text class="sample-label" x="375" y="412" text-anchor="middle">24 px</text>
+  </g>
+</svg>
+

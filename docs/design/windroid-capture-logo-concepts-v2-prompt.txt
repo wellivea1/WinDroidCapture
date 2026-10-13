@@ -1,0 +1,10 @@
+Generated using the built-in image_gen editing tool on 2026-10-13.
+Edit target: windroid-capture-logo-concepts-v1.png, preserved beside this revision.
+
+Use case: logo-brand.
+Edit target: the existing WinDroid Capture six-concept logo sheet.
+Primary request: Refine ONLY concept 01 PHONE LENS, at the top left. The circular camera lens and its ENTIRE blue outer ring must fit fully INSIDE the upright phone's inner screen opening. Reduce the lens ring's outside diameter, including its stroke, to about 85 percent of the phone's inner screen width and center it horizontally. Leave a clearly visible, even margin between the blue circle and each inner edge of the phone. Keep the lens vertically centered in the screen. Scale the dark inner lens, white annular gap and small highlight together so the original lens appearance is retained.
+Apply the same inset lens correction to the three small Phone Lens versions below it: dark swatch, monochrome swatch and smallest icon sample. The blue or monochrome circle must never touch, overlap or extend beyond the phone's screen edges.
+Preserve the exact outer phone shape, external video-camera wedge, wordmark "WinDroid Capture", typography, blue/charcoal palette, icon positions and the overall six-cell sheet layout. The external wedge stays outside the phone as before; only the circular lens assembly is made smaller to fit within the screen.
+Preserve ALL artwork, labels and samples for concepts 02 FRAME BRIDGE, 03 WDC MONOGRAM, 04 CAPTURE PORT, 05 SIGNAL WINDOW and 06 PIXEL APERTURE unchanged. Preserve the board title "WinDroid Capture" and subtitle "LOGO CONCEPTS". No new text, symbols, background treatments, gradients or decorations. Make one focused, crisp geometry correction.
+

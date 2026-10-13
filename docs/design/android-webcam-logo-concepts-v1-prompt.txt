@@ -1,0 +1,31 @@
+Generated with the built-in image_gen tool on 2026-10-13.
+Exploratory concepts for Android Webcam Manager.
+
+Use case: logo-brand.
+Asset type: one polished logo exploration board for the Windows desktop application "Android Webcam Manager".
+Context: This application connects an Android phone to Windows and turns the phone camera or phone screen into a virtual webcam; it also manages a phone microphone path. The established interface is compact, professional, charcoal and blue, with light and dark themes and crisp rectangular controls. The user dislikes a bubbly or overly soft visual style.
+
+Primary request: Generate SIX genuinely different, plausible logo ideas on one clearly organized landscape board, arranged in a precise 3-column by 2-row grid. This is a design exploration, not a screenshot of the app. Each mark must have a bold recognizable silhouette, balanced negative space, and simple geometry suitable for later faithful vector implementation and for a Windows app/tray icon at 16, 24, and 32 pixels. Keep all essential shapes inside a square icon footprint with comfortable margins. Prefer substantial strokes or solid forms over fragile hairlines.
+
+Exact board title: "Android Webcam Manager".
+Exact small subtitle: "LOGO CONCEPTS".
+Exact concept labels, numbered 01 through 06:
+"01  PHONE LENS"
+"02  FRAME BRIDGE"
+"03  AWM MONOGRAM"
+"04  CAPTURE PORT"
+"05  SIGNAL WINDOW"
+"06  PIXEL APERTURE"
+
+Creative directions:
+01 PHONE LENS: A very simplified upright phone outline whose inner negative space forms a camera lens, with one restrained geometric cue of video output. Compact, clear, confident.
+02 FRAME BRIDGE: An upright phone frame and a landscape capture frame share one structural edge, joined by a strong blue link. Make it one unified symbol, not a diagram of two devices connected by a wire.
+03 AWM MONOGRAM: A custom angular A/W/M monogram with clean interlocking strokes; emphasize a distinctive compact overall silhouette. No ordinary typed acronym masquerading as a symbol.
+04 CAPTURE PORT: Four sturdy capture-corner brackets surrounding a lens or square portal, with a single blue transition accent suggesting an input becoming an output.
+05 SIGNAL WINDOW: A small landscape capture frame containing three simple blue signal bars, suggesting video and microphone together; avoid a full microphone illustration or overloaded tiny details.
+06 PIXEL APERTURE: A geometric aperture formed from a small number of chunky square or chamfered blocks around a clear center; suggest digital capture without becoming a flower or gear.
+
+Presentation: Neutral off-white board with fine gray grid dividers, carefully aligned editorial typography, ample spacing, no rounded cards or drop shadows. Each cell shows one large primary mark on a light background, a smaller reversed version on a charcoal swatch, and a simple monochrome version or tiny icon-size sample. Make the marks prominent and the comparisons easy to scan. The six numbered labels should be readable and correctly spelled. Include a small clean wordmark "Android Webcam Manager" with each main mark if it fits without crowding. Use a restrained modern sans-serif typeface and flat colors: vivid blue close to #1688F0, charcoal close to #191C20, off-white, and neutral gray. Blue and charcoal should be the only chromatic brand direction.
+
+Constraints: Original designs; do not use the Android robot, Google logo, Windows logo, OBS logo, Discord logo, or scrcpy logo. No mascots, glossy 3D, gradients, neon glow, device photographs, decorative backgrounds, badges, pill shapes, long explanatory text, or tiny circuit-board details. Crisp straight edges with only modest corner treatment where useful. No trademark or registration symbols. No slogans. The marks should feel like durable desktop software branding rather than a streaming channel or gaming team.
+

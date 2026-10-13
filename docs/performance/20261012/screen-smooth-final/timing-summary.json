@@ -1,0 +1,108 @@
+{
+  "measurement": "PC packet arrival to preview Present return; not phone-to-display latency",
+  "packet_series": "all received compressed video packets",
+  "warmup_seconds": 2,
+  "joined_frames": 759,
+  "invalid_joins": 0,
+  "capture_frames": 814,
+  "successful_preview_submissions": 814,
+  "unique_preview_frames": 814,
+  "duplicate_preview_redraws": 0,
+  "preview_frames_without_capture": 1,
+  "metrics": {
+    "source_pts_interval": {
+      "n": 760,
+      "mean_ms": 33.47706052631579,
+      "p50_ms": 33.3855,
+      "p95_ms": 41.4957,
+      "p99_ms": 49.92111,
+      "max_ms": 83.692
+    },
+    "packet_interval": {
+      "n": 759,
+      "mean_ms": 33.521137944637395,
+      "p50_ms": 32.402599930763245,
+      "p95_ms": 54.66675007343292,
+      "p99_ms": 69.89232199430465,
+      "max_ms": 89.41690003871918
+    },
+    "preview_interval": {
+      "n": 759,
+      "mean_ms": 33.477465876163386,
+      "p50_ms": 33.47690010070801,
+      "p95_ms": 41.55648995637894,
+      "p99_ms": 49.811045978069295,
+      "max_ms": 82.29839992523193
+    },
+    "receiver_callback_interval": {
+      "n": 759,
+      "mean_ms": 33.33234624507713,
+      "p50_ms": 31.40779995918274,
+      "p95_ms": 47.52528998851776,
+      "p99_ms": 49.37675399303436,
+      "max_ms": 51.52039992809296
+    },
+    "pc_latency": {
+      "n": 759,
+      "mean_ms": 41.34070118613865,
+      "p50_ms": 44.10000002384186,
+      "p95_ms": 49.685650050640106,
+      "p99_ms": 51.35085605144501,
+      "max_ms": 52.815199971199036
+    },
+    "decode": {
+      "n": 759,
+      "mean_ms": 4.378203427681653,
+      "p50_ms": 4.4704999923706055,
+      "p95_ms": 5.200510048866272,
+      "p99_ms": 5.638577945232391,
+      "max_ms": 9.63349997997284
+    },
+    "convert": {
+      "n": 759,
+      "mean_ms": 1.1787592863691025,
+      "p50_ms": 1.0885000228881836,
+      "p95_ms": 1.9928099751472481,
+      "p99_ms": 2.4198400259017943,
+      "max_ms": 2.8632999658584595
+    },
+    "queue_wait": {
+      "n": 759,
+      "mean_ms": 34.88107351996054,
+      "p50_ms": 37.61150002479553,
+      "p95_ms": 43.39551991224289,
+      "p99_ms": 45.33251201152801,
+      "max_ms": 48.15160000324249
+    },
+    "publish_to_submit": {
+      "n": 759,
+      "mean_ms": 0.8926440032888621,
+      "p50_ms": 0.7984999418258667,
+      "p95_ms": 1.3768900036811835,
+      "p99_ms": 2.6587620258331297,
+      "max_ms": 2.929800033569336
+    },
+    "copy": {
+      "n": 759,
+      "mean_ms": 0.2820930207670913,
+      "p50_ms": 0.2753000259399414,
+      "p95_ms": 0.33105008602142333,
+      "p99_ms": 0.40381595849990803,
+      "max_ms": 0.9337999820709229
+    },
+    "render": {
+      "n": 759,
+      "mean_ms": 0.6022533591399865,
+      "p50_ms": 0.512700080871582,
+      "p95_ms": 1.088340020179749,
+      "p99_ms": 2.1476040768623332,
+      "max_ms": 2.603800058364868
+    }
+  },
+  "queue_dropped_total": 5,
+  "queue_late_total": 0,
+  "queue_dropped_change_in_selected_window": 0,
+  "queue_late_change_in_selected_window": 0,
+  "selection": "explicit motion-test window",
+  "fps_reference": 30.0
+}
