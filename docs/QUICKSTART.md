@@ -1,88 +1,119 @@
-# Get a phone into your Windows camera list
+# Set up WinDroid Capture
 
-[← README](../README.md) · [Controls](CONTROLS.md) · [Troubleshooting](TROUBLESHOOTING.md)
+[← README](../README.md) · [Camera settings](CONTROLS.md) · [Get help](TROUBLESHOOTING.md)
+
+You need **Windows 11 (64-bit)**, an Android phone and a USB cable for the first setup. Keep your phone unlocked while testing.
 
 > [!IMPORTANT]
-> This release supports local video testing. Use **Audio: Off**: the own microphone driver is unsigned and no usable phone-microphone endpoint is supplied yet.
+> Choose **Audio: Off**. This early release supports video; phone microphone support is not ready yet.
 
-## 1. Prepare Windows and the runtime
+## 1. Download the app and connection tools
 
-| Requirement | Why it is needed |
+1. Open the [Windows download page](https://github.com/wellivea1/WinDroidCapture/releases/tag/v0.3.0-dev.1). Download the **WinDroidCapture…zip** file and extract it to a folder.
+2. Open the [official scrcpy 5.0.1 download page](https://github.com/Genymobile/scrcpy/releases/tag/v5.0.1). Download **scrcpy-win64-v5.0.1.zip** and extract it to a separate folder.
+3. Copy the **`.dll` files** from the scrcpy folder into the folder containing **WinDroidCapture.exe**. These files let the app process video. Keep the original scrcpy folder for the next step.
+
+scrcpy supplies the phone-connection tools that the app needs. Keep its files together. You do not need OBS or a virtual audio cable.
+
+## 2. Open the app
+
+Open **WinDroidCapture.exe** in the app folder. It opens the interface without starting your phone's camera or screen capture.
+
+In **Settings → Dependencies**, use **Browse…** to choose these files from the extracted scrcpy folder:
+
+| App field | File to choose |
 | --- | --- |
-| Windows 11 x64, build 22000 or later | Media Foundation software virtual-camera API; tested desktop is build 26200 |
-| Matching official scrcpy **5.0.1** distribution | ADB, runtime DLLs, ordinary capability/version probes and upstream transport |
-| USB debugging authorization | Explicit access to the selected Android phone |
-| An awake phone for screen capture | Authorization alone does not produce display frames |
+| Selected ADB executable | **adb.exe** |
+| Stock scrcpy executable | **scrcpy.exe** |
 
-Download the Windows development ZIP from [Releases](https://github.com/wellivea1/WinDroidCapture/releases) and extract it. Obtain the [official scrcpy 5.0.1 Windows x64 ZIP](https://github.com/Genymobile/scrcpy/releases/tag/v5.0.1) in a separate directory. Keep its bundled notices and files together. OBS and virtual audio cables are not required.
+Press **Validate and Apply**. If video startup reports missing DLLs, check the copied files from step 1, or use the alternative launcher below.
 
-In a source checkout, the optional downloader uses official release metadata and requires a published SHA256:
+<details>
+<summary><strong>Alternative: launch without copying the video files</strong></summary>
 
-```powershell
-.\scripts\setup-scrcpy.ps1
-```
-
-It refuses to replace an existing destination. A newer scrcpy release may require adapter changes; this build is pinned to the verified distribution, rather than following upstream master.
-
-## 2. Install the Windows camera
-
-Run from the extracted application package, or the built source checkout:
-
-```powershell
-.\scripts\install-outputs.ps1 -Camera
-```
-
-Windows requests elevation to install the camera source DLL and its own COM registration. Handle that prompt yourself. The subsequent camera registration belongs to the current user, and normal capture runs without administrator privileges. Only this project's source/registration is managed.
-
-Alternatively, use **Settings → Output → Install camera source**, then **Register camera** in the application. The device name is **Android Webcam Camera (Windows Virtual Camera)**. Registration and a working phone stream are separate states.
-
-## 3. Launch with the matching runtime
+Open PowerShell in the extracted app folder. Run the following, replacing the example path with your extracted scrcpy folder:
 
 ```powershell
 .\scripts\run.ps1 -ScrcpyFolder 'C:\path\scrcpy-win64-v5.0.1'
 ```
 
-This sets the dependency search path for the app and children only. In **Settings → Dependencies**, select the actual `scrcpy.exe` and `adb.exe` paths, or the extracted distribution. Confirm the displayed versions. Discovery and capture use that same selected ADB.
+The launcher makes the matching runtime files available to the app and its child processes. It leaves the system-wide PATH unchanged. End users need neither Java nor an Android SDK.
 
-No capture starts on launch. The installed camera can remain enumerable while its producer is stopped.
+For a source checkout, the optional `.\scripts\setup-scrcpy.ps1` downloader verifies the publisher's SHA256 and refuses to replace an existing target. [Build instructions](BUILDING.md).
 
-## 4. Authorize and choose the source
+</details>
 
-### USB
+## 3. Add the Windows camera
 
-Enable Android **Developer options → USB debugging**, connect the phone, unlock it and accept its RSA authorization prompt. Refresh the device list if necessary. Select the authorized transport explicitly; multiple rows with the same model name are not merged.
+In **Settings → Output**:
 
-### Wireless debugging
+1. Press **Install camera source**. Windows asks for administrator approval to install the camera component; handle that prompt yourself.
+2. Press **Register camera**.
 
-On modern Android, open **Wireless debugging → Pair device with pairing code**. In the app's **Devices** page, enter that pairing address/port and ephemeral code. Then connect using the phone's separate **connection** address/port. The two ports can differ; port 5555 is not assumed. Use the available mDNS discovery or explicit manual entry. Pairing codes are neither logged nor saved.
+The camera appears as **Android Webcam Camera (Windows Virtual Camera)**. Later, normal capture does not need administrator privileges. Installing it once does not start phone capture.
 
-### Camera or screen
+<details>
+<summary>Alternative: install from PowerShell</summary>
 
-On **Capture**, choose **Phone camera** or **Phone screen**, then the enumerated camera/display. Keep the phone awake and unlocked for the initial screen test. Screen capture includes the selected phone display and any notifications on it; use a neutral Settings page while testing.
+Run from the extracted app folder, or a built source checkout:
 
-Choose **Standard** for a first camera test, or **Balanced** for a first screen test. These request modes and are validated at startup. Pixel 10 Pro XL owners can select a direct rear lens; [read the firmware-dependent binding notes](PIXEL_CAMERAS.md).
+```powershell
+.\scripts\install-outputs.ps1 -Camera
+```
 
-Select **Audio: Off**, then **Start capture**. Check ADB connection, live source status and Windows camera availability separately. Use **Stop → select → Start** to change device or source.
+This installs only the project's camera source and registers the current user's virtual camera. The software-camera API requires Windows build 22000 or later; the tested desktop is Windows 11 build 26200.
 
-## 5. Select the input in Discord
+</details>
 
-Open **Discord → Settings → Voice & Video**:
+## 4. Connect your phone
 
-| Setting | Select |
-| --- | --- |
-| Camera | **Android Webcam Camera (Windows Virtual Camera)** |
-| Input Device | **Android Webcam Microphone**, only after a trusted driver exists and its exact name is enumerated |
+On Android, turn on **Developer options → USB debugging**. Connect the USB cable, unlock the phone and accept the phone's **Allow USB debugging** prompt. Return to WinDroid Capture and choose your phone. Use **Refresh** if it has not appeared.
 
-The microphone entry is currently absent. Do not treat an existing PC microphone or a cable input as a phone-audio pass. Discord's self-view may mirror independently of the app's output transform.
+If the phone says **Unauthorized**, check for the authorization prompt on the phone. If it says **Offline**, reconnect and refresh. [Connection help](TROUBLESHOOTING.md).
 
-Use Discord's **local Test Video**. No live call is needed. Move a lit object in front of the camera or scroll a neutral phone screen, then check that the selected content appears. Close Test Video before using the separate receiver: simultaneous consumers previously failed on the tested configuration.
+### Wireless connection (optional)
 
-## 6. Check output ownership and Stop
+<details>
+<summary>Pair and connect without USB</summary>
 
-- Press **Test input** with Audio Off for an explicit video-only local receiver. It runs for 90 seconds and selects only our named camera; it does not transmit or record media.
-- **Hide preview** or minimize the manager. The Windows camera continues independently.
-- Press **Stop**. Both owned capture processes stop, pending images are discarded, and the camera emits a stopped image.
-- Reopen the manager. Preferences remain, but capture stays stopped.
+On a phone with modern Android wireless debugging, open **Wireless debugging → Pair device with pairing code**. In the app's **Devices** page, enter that pairing address/port and code. Then connect using the phone's separate connection address/port.
 
-> [!NOTE]
-> A preview, an enumerated camera and a receiving application displaying video are three different validation states. Resolution/FPS negotiation, sustained smoothness and audio/video synchronization require their own checks. See the [test report](../TEST_REPORT.md).
+The two ports can differ; port 5555 is not assumed. Use the offered discovery list or manual entry. Pairing codes are not saved or logged. Legacy USB-to-TCP/IP mode is not enabled automatically.
+
+</details>
+
+## 5. Start video
+
+On **Capture**:
+
+1. Choose **Phone camera** or **Phone screen**, then the camera/display you want.
+2. Start with **Standard** for the camera, or **Balanced** for the screen.
+3. Set **Audio: Off** and press **Start capture**.
+
+Keep the phone awake for screen capture. It shows the selected phone display, including any notifications, so use a neutral page when testing. To change device or source, press **Stop** first.
+
+Pixel 10 Pro XL owners can choose direct rear wide, ultrawide or telephoto cameras. [Camera choices](PIXEL_CAMERAS.md) · [All controls](CONTROLS.md).
+
+## 6. Choose it in Discord
+
+Go to **Discord → Settings → Voice & Video → Camera** and choose:
+
+**Android Webcam Camera (Windows Virtual Camera)**
+
+Use **Test Video** to check the picture. No live call is needed. Move an object in front of the phone camera, or scroll a neutral phone screen, and confirm the picture follows it.
+
+Phone microphone support is unavailable in this release. A different microphone does not establish phone-audio delivery. Discord may mirror its own preview independently of the app's mirroring control.
+
+## Useful everyday controls
+
+- **Hide preview** saves screen space while Windows camera output continues.
+- **Stop** ends capture and replaces the outgoing picture with a stopped image.
+- **Test input** opens a separate local video receiver for 90 seconds. Close Discord's Test Video first; simultaneous camera use has failed on the tested desktop.
+- Closing and reopening the app keeps your preferences, but never starts capture automatically.
+
+<details>
+<summary>What has been tested, and what still needs work?</summary>
+
+Video has been observed in Discord's local camera test and in the independent receiver, with separate source/mode checks. An app preview, an installed camera and a receiving app showing video are different states. Final smoothness, wider resolution/frame-rate support and full phone microphone/synchronization checks remain incomplete. [Detailed test report](../TEST_REPORT.md).
+
+</details>

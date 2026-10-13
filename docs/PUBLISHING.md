@@ -35,6 +35,12 @@ The initial runtime review found **31 embedded absolute developer-path strings**
 
 The Windows publisher now copies the tracked source tree rather than recursively copying development directories. Generated Python bytecode and other untracked material stay local; unsigned kernel binaries are omitted. Review logs and image contact sheets stay under the excluded local `evidence/` directory. These checks are an explicit review of this snapshot, not a claim about future unreviewed changes.
 
+### README image refresh
+
+The README's original 1042 × 731 JPEG was replaced on **2026-10-13** with a fresh **1302 × 914 lossless PNG** captured at the application window's native resolution. The published image contains only the stopped application with no selected phone, device identifier, phone media or cursor overlay. It has no EXIF or text metadata. The image links to its full-size version; it is not an enlarged or recompressed copy of the earlier screenshot.
+
+The shorter README keeps download, setup and Discord camera selection visible, with technical material linked from expandable sections. The setup guide leads with the application's controls and folds optional command-line instructions. This documentation update does not add new hardware-test claims or change the existing development-release binaries.
+
 ## Release honesty
 
 A Windows development ZIP is a separate artifact from source publication. It contains the owned user-mode executables, modified server, reviewed tracked source and notices. It omits unsigned kernel binaries, third-party runtime DLLs, untracked files, caches and unrelated/raw evidence. Driver source remains included. The runtime must be installed separately; the own microphone is still unavailable. Release notes and README must keep these facts explicit.
