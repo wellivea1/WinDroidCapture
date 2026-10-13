@@ -1,8 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="logo-title">
 <title id="logo-title">WinDroid Capture — Phone Lens</title>
-<metadata>Refined Phone Lens from concept-sheet revision 2. Lens ring remains wholly inside the phone screen. Dark desktop icon variant; explicit colors; transparent outer corners.</metadata>
+<metadata>Refined Phone Lens from concept-sheet revision 2, optically centered within the tile. Lens ring remains wholly inside the phone screen. Dark desktop icon variant; explicit colors; transparent outer corners.</metadata>
 <rect width="256" height="256" rx="12" fill="#191c20"/>
-<g transform="translate(14.6 20) scale(1.08)">
+<!-- Balance the bright phone against the blue camera projection. -->
+<g transform="translate(30 21.2) scale(1.08)">
 <path fill="#ffffff" fill-rule="evenodd" d="M48 12H120Q134 12 134 26V174Q134 188 120 188H48Q34 188 34 174V26Q34 12 48 12ZM48 38V166H120V38Z" />
       
 <rect x="73" y="23" width="22" height="5" rx="2" fill="#191c20" />

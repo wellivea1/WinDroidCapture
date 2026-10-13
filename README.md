@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="src/assets/windroid-capture-128.png" alt="WinDroid Capture logo" width="88" height="88">
+<img src="src/assets/windroid-capture-256.png" alt="WinDroid Capture logo" width="88" height="88">
 
 # WinDroid Capture
 
