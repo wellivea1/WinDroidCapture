@@ -5,6 +5,7 @@ typedef struct PreviewWorker PreviewWorker;
 typedef struct PreviewStats {uint64_t presented,skipped,copy_misses,last_source_frame;double render_ms,last_gap_ms;} PreviewStats;
 PreviewWorker *preview_worker_create(HWND canvas,HWND notify);
 void preview_worker_update(PreviewWorker *w,const wchar_t *mapping,bool enabled,unsigned scaler,unsigned framing);
+void preview_worker_set_zoom(PreviewWorker *w,float zoom,float pan_x,float pan_y);
 void preview_worker_redraw(PreviewWorker *w);
 bool preview_worker_live(PreviewWorker *w);
 bool preview_worker_failed(PreviewWorker *w);

@@ -1,8 +1,30 @@
-param([Parameter(Mandatory)][string]$ScrcpyFolder,[string]$TimingDirectory)
+param([string]$ScrcpyFolder,[string]$TimingDirectory)
 $ErrorActionPreference='Stop'
 $taskBase=Split-Path $PSScriptRoot -Parent
+$taskRequired=@('adb.exe','scrcpy.exe','scrcpy-server','SDL3.dll','avcodec-63.dll','avformat-63.dll','avutil-61.dll','swresample-7.dll')
+function Test-ScrcpyRuntime([string]$Folder){
+    if(!$Folder -or !(Test-Path -LiteralPath $Folder -PathType Container)){return $false}
+    foreach($f in $taskRequired){if(!(Test-Path -LiteralPath (Join-Path $Folder $f))){return $false}}
+    return $true
+}
+if(!$ScrcpyFolder){
+    $candidates=@(
+        (Join-Path $taskBase 'tools\scrcpy-win64-v5.0.1'),
+        (Join-Path $taskBase 'build-native')
+    )
+    $toolsDir=Join-Path $taskBase 'tools'
+    if(Test-Path -LiteralPath $toolsDir -PathType Container){
+        foreach($d in (Get-ChildItem -LiteralPath $toolsDir -Directory -Filter 'scrcpy-win64-*' | Sort-Object Name -Descending)){
+            $candidates+=$d.FullName
+        }
+    }
+    foreach($cand in $candidates){
+        if(Test-ScrcpyRuntime $cand){$ScrcpyFolder=$cand;break}
+    }
+    if(!$ScrcpyFolder){throw 'Could not auto-discover scrcpy 5.0.1 runtime under tools\scrcpy-win64-*. Pass -ScrcpyFolder <path>.'}
+}
 $taskTools=[IO.Path]::GetFullPath($ScrcpyFolder)
-foreach($taskFile in @('adb.exe','scrcpy.exe','scrcpy-server','SDL3.dll','avcodec-63.dll','avformat-63.dll','avutil-61.dll','swresample-7.dll')){
+foreach($taskFile in $taskRequired){
     if(!(Test-Path -LiteralPath (Join-Path $taskTools $taskFile))){throw "Missing matching official runtime file: $taskFile"}
 }
 $taskExecutable=Join-Path $taskBase 'WinDroidCapture.exe'

@@ -1,15 +1,36 @@
 #include "preview.h"
 #include "composition.h"
 #include <d3d11_1.h>
+#include <d3d10.h>
 #include <dxgi1_4.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
 #include "scale_bytecode.h"
 #define DROP(p) do{if(p){IUnknown_Release((IUnknown *)p);p=NULL;}}while(0)
-struct NativePreview {HWND window;ID3D11Device *device;ID3D11DeviceContext *context;ID3D11DeviceContext1 *context1;IDXGISwapChain *swap;HANDLE latency;bool prepared;UINT swap_flags;ID3D11RenderTargetView *target,*inter_target;ID3D11VertexShader *vertex;ID3D11PixelShader *pixel,*color;ID3D11SamplerState *sampler,*linear;ID3D11Texture2D *texture,*inter,*output,*staging,*planes[3];ID3D11Texture1D *lut;ID3D11ShaderResourceView *view,*inter_view,*lut_view,*plane_views[3];ID3D11Buffer *params;UINT width,height,cw,ch,iw,ih,scaler,framing,yw,yh;bool yuv_nv12;};
-void native_preview_set_scaler(NativePreview *p,unsigned s){if(p&&s<=2)p->scaler=s;}
+struct NativePreview {
+    HWND window;ID3D11Device *device;ID3D11DeviceContext *context;ID3D11DeviceContext1 *context1;IDXGISwapChain *swap;HANDLE latency;bool prepared,hardware;UINT swap_flags;
+    ID3D11RenderTargetView *target,*inter_target,*nv12_y_rtv,*nv12_uv_rtv;
+    ID3D11VertexShader *vertex;ID3D11PixelShader *pixel,*color,*nv12_y_ps,*nv12_uv_ps;
+    ID3D11SamplerState *sampler,*linear;
+    ID3D11Texture2D *texture,*inter,*output,*staging,*planes[3],*gpu_nv12,*nv12_y,*nv12_uv,*nv12_y_staging,*nv12_uv_staging;
+    ID3D11Texture1D *lut;
+    ID3D11ShaderResourceView *view,*inter_view,*output_view,*lut_view,*plane_views[3],*gpu_nv12_views[2];
+    ID3D11Buffer *params;
+    UINT width,height,cw,ch,iw,ih,scaler,framing,yw,yh,gnw,gnh,nvw,nvh;bool yuv_nv12;
+    float zoom,pan_x,pan_y;
+};
+void *native_preview_d3d_device(NativePreview *p){return p?p->device:NULL;}
+void *native_preview_d3d_context(NativePreview *p){return p?p->context:NULL;}
+bool native_preview_is_hardware(NativePreview *p){return p&&p->hardware;}
+void native_preview_set_scaler(NativePreview *p,unsigned s){if(p&&s<=3)p->scaler=s;}
 void native_preview_set_framing(NativePreview *p,unsigned f){if(p&&f<=1)p->framing=f;}
+void native_preview_set_zoom(NativePreview *p,float zoom,float pan_x,float pan_y){
+    if(!p)return;
+    if(!(zoom>=1.0f))zoom=1.0f;if(zoom>8.0f)zoom=8.0f;
+    if(!(pan_x>=0.0f&&pan_x<=1.0f))pan_x=0.5f;if(!(pan_y>=0.0f&&pan_y<=1.0f))pan_y=0.5f;
+    p->zoom=zoom;p->pan_x=pan_x;p->pan_y=pan_y;
+}
 static double jinc(double x){if(fabs(x)<1e-8)return 1;double v=3.14159265358979323846*x;return 2*_j1(v)/v;}
 static bool target(NativePreview *p){ID3D11Texture2D *back=NULL;HRESULT hr=IDXGISwapChain_GetBuffer(p->swap,0,&IID_ID3D11Texture2D,(void **)&back);if(SUCCEEDED(hr))hr=ID3D11Device_CreateRenderTargetView(p->device,(ID3D11Resource *)back,NULL,&p->target);DROP(back);return SUCCEEDED(hr);}
 static HRESULT create_swap(NativePreview *p){
@@ -29,10 +50,15 @@ bool native_preview_wait(NativePreview *p,HANDLE cancel,DWORD timeout){
 }
 static bool present(NativePreview *p){if(!p->swap)return true;p->prepared=false;return SUCCEEDED(IDXGISwapChain_Present(p->swap,1,0));}
 NativePreview *native_preview_create(HWND h){
-    NativePreview *p=calloc(1,sizeof(*p));if(!p)return NULL;p->window=h;RECT r={0};if(h)GetClientRect(h,&r);p->cw=r.right?r.right:1;p->ch=r.bottom?r.bottom:1;
-    HRESULT hr=D3D11CreateDevice(NULL,D3D_DRIVER_TYPE_HARDWARE,NULL,D3D11_CREATE_DEVICE_BGRA_SUPPORT,NULL,0,D3D11_SDK_VERSION,&p->device,NULL,&p->context);
-    if(FAILED(hr))hr=D3D11CreateDevice(NULL,D3D_DRIVER_TYPE_WARP,NULL,D3D11_CREATE_DEVICE_BGRA_SUPPORT,NULL,0,D3D11_SDK_VERSION,&p->device,NULL,&p->context);
-    if(SUCCEEDED(hr)){ID3D11DeviceContext_QueryInterface(p->context,&IID_ID3D11DeviceContext1,(void **)&p->context1);if(h)hr=create_swap(p);}
+    NativePreview *p=calloc(1,sizeof(*p));if(!p)return NULL;p->window=h;p->zoom=1.0f;p->pan_x=0.5f;p->pan_y=0.5f;RECT r={0};if(h)GetClientRect(h,&r);p->cw=r.right?r.right:1;p->ch=r.bottom?r.bottom:1;
+    HRESULT hr=D3D11CreateDevice(NULL,D3D_DRIVER_TYPE_HARDWARE,NULL,D3D11_CREATE_DEVICE_BGRA_SUPPORT|D3D11_CREATE_DEVICE_VIDEO_SUPPORT,NULL,0,D3D11_SDK_VERSION,&p->device,NULL,&p->context);
+    if(FAILED(hr))hr=D3D11CreateDevice(NULL,D3D_DRIVER_TYPE_HARDWARE,NULL,D3D11_CREATE_DEVICE_BGRA_SUPPORT,NULL,0,D3D11_SDK_VERSION,&p->device,NULL,&p->context);
+    if(SUCCEEDED(hr))p->hardware=true;
+    else hr=D3D11CreateDevice(NULL,D3D_DRIVER_TYPE_WARP,NULL,D3D11_CREATE_DEVICE_BGRA_SUPPORT,NULL,0,D3D11_SDK_VERSION,&p->device,NULL,&p->context);
+    if(SUCCEEDED(hr)){
+        ID3D10Multithread *mt=NULL;if(SUCCEEDED(ID3D11Device_QueryInterface(p->device,&IID_ID3D10Multithread,(void **)&mt))){ID3D10Multithread_SetMultithreadProtected(mt,TRUE);DROP(mt);}
+        ID3D11DeviceContext_QueryInterface(p->context,&IID_ID3D11DeviceContext1,(void **)&p->context1);if(h)hr=create_swap(p);
+    }
     if(SUCCEEDED(hr)){IDXGIDevice1 *dxgi=NULL;if(SUCCEEDED(ID3D11Device_QueryInterface(p->device,&IID_IDXGIDevice1,(void **)&dxgi))){IDXGIDevice1_SetMaximumFrameLatency(dxgi,1);DROP(dxgi);}if(p->swap){IDXGISwapChain3 *sw=NULL;if(SUCCEEDED(IDXGISwapChain_QueryInterface(p->swap,&IID_IDXGISwapChain3,(void **)&sw))){UINT support=0;if(SUCCEEDED(IDXGISwapChain3_CheckColorSpaceSupport(sw,DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709,&support))&&(support&DXGI_SWAP_CHAIN_COLOR_SPACE_SUPPORT_FLAG_PRESENT))IDXGISwapChain3_SetColorSpace1(sw,DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709);DROP(sw);}}}
     if(SUCCEEDED(hr))hr=ID3D11Device_CreateVertexShader(p->device,awm_vertex_bytecode,sizeof(awm_vertex_bytecode),NULL,&p->vertex);
     if(SUCCEEDED(hr))hr=ID3D11Device_CreatePixelShader(p->device,awm_pixel_bytecode,sizeof(awm_pixel_bytecode),NULL,&p->pixel);
@@ -48,40 +74,92 @@ NativePreview *native_preview_create(HWND h){
     if(SUCCEEDED(hr))hr=ID3D11Device_CreateTexture1D(p->device,&td,&initial,&p->lut);if(SUCCEEDED(hr))hr=ID3D11Device_CreateShaderResourceView(p->device,(ID3D11Resource *)p->lut,NULL,&p->lut_view);
     if(FAILED(hr)||(h&&!target(p))){native_preview_destroy(p);return NULL;}return p;
 }
-bool native_preview_frame(NativePreview *p,const uint8_t *pixels,uint32_t w,uint32_t h){
-    if(!p||!pixels||!w||!h||!native_preview_wait(p,NULL,500))return false;RECT r={0,0,(LONG)p->cw,(LONG)p->ch};if(p->window)GetClientRect(p->window,&r);if(!r.right||!r.bottom)return true;
-    if(p->cw!=(UINT)r.right||p->ch!=(UINT)r.bottom){ID3D11DeviceContext_OMSetRenderTargets(p->context,0,NULL,NULL);DROP(p->target);p->cw=r.right;p->ch=r.bottom;if(FAILED(IDXGISwapChain_ResizeBuffers(p->swap,2,p->cw,p->ch,DXGI_FORMAT_UNKNOWN,p->swap_flags))||!target(p))return false;}
+static bool upload_bgra(NativePreview *p,const uint8_t *pixels,uint32_t w,uint32_t h){
     if(p->width!=w||p->height!=h){DROP(p->view);DROP(p->texture);D3D11_TEXTURE2D_DESC d={0};d.Width=w;d.Height=h;d.MipLevels=1;d.ArraySize=1;d.Format=DXGI_FORMAT_B8G8R8A8_UNORM;d.SampleDesc.Count=1;d.Usage=D3D11_USAGE_DEFAULT;d.BindFlags=D3D11_BIND_SHADER_RESOURCE;
         if(FAILED(ID3D11Device_CreateTexture2D(p->device,&d,NULL,&p->texture))||FAILED(ID3D11Device_CreateShaderResourceView(p->device,(ID3D11Resource *)p->texture,NULL,&p->view)))return false;p->width=w;p->height=h;}
     /* Like mpv's D3D11 upload strategy, declare full texture replacement so
        queued draws do not force preservation of the preceding image. */
     if(p->context1)ID3D11DeviceContext1_UpdateSubresource1(p->context1,(ID3D11Resource *)p->texture,0,NULL,pixels,w*4,0,D3D11_COPY_DISCARD);else ID3D11DeviceContext_UpdateSubresource(p->context,(ID3D11Resource *)p->texture,0,NULL,pixels,w*4,0);
-    float bg[]={0,0,0,1};ID3D11DeviceContext_ClearRenderTargetView(p->context,p->target,bg);
-    AwmComposition framing;if(!awm_composition(w,h,p->cw,p->ch,p->framing,&framing))return false;UINT vw=framing.width,vh=framing.height;
-    ID3D11ShaderResourceView *none=NULL;ID3D11DeviceContext_PSSetShaderResources(p->context,0,1,&none);ID3D11DeviceContext_OMSetRenderTargets(p->context,0,NULL,NULL);
-    ID3D11DeviceContext_IASetPrimitiveTopology(p->context,D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);ID3D11DeviceContext_VSSetShader(p->context,p->vertex,NULL,0);ID3D11DeviceContext_PSSetShader(p->context,p->pixel,NULL,0);ID3D11DeviceContext_PSSetSamplers(p->context,0,1,&p->sampler);ID3D11DeviceContext_PSSetSamplers(p->context,1,1,&p->linear);ID3D11DeviceContext_PSSetConstantBuffers(p->context,0,1,&p->params);ID3D11DeviceContext_VSSetConstantBuffers(p->context,0,1,&p->params);ID3D11DeviceContext_PSSetShaderResources(p->context,1,1,&p->lut_view);
-    if(p->scaler!=AWM_SCALE_LANCZOS3){D3D11_VIEWPORT viewport={(float)framing.x,(float)framing.y,(float)vw,(float)vh,0,1};float axes[]={(float)w*framing.uw/vw,(float)h*framing.vh/vh,0,p->scaler==AWM_SCALE_EWA_LANCZOS?1.0f:2.0f,framing.u,framing.v,framing.uw,framing.vh};ID3D11DeviceContext_UpdateSubresource(p->context,(ID3D11Resource *)p->params,0,NULL,axes,0,0);ID3D11DeviceContext_RSSetViewports(p->context,1,&viewport);ID3D11DeviceContext_OMSetRenderTargets(p->context,1,&p->target,NULL);ID3D11DeviceContext_PSSetShaderResources(p->context,0,1,&p->view);ID3D11DeviceContext_Draw(p->context,4,0);return present(p);}
-    if(p->iw!=vw||p->ih!=h){DROP(p->inter_target);DROP(p->inter_view);DROP(p->inter);D3D11_TEXTURE2D_DESC d={0};d.Width=vw;d.Height=h;d.MipLevels=1;d.ArraySize=1;d.Format=DXGI_FORMAT_R16G16B16A16_FLOAT;d.SampleDesc.Count=1;d.BindFlags=D3D11_BIND_RENDER_TARGET|D3D11_BIND_SHADER_RESOURCE;if(FAILED(ID3D11Device_CreateTexture2D(p->device,&d,NULL,&p->inter))||FAILED(ID3D11Device_CreateRenderTargetView(p->device,(ID3D11Resource *)p->inter,NULL,&p->inter_target))||FAILED(ID3D11Device_CreateShaderResourceView(p->device,(ID3D11Resource *)p->inter,NULL,&p->inter_view)))return false;p->iw=vw;p->ih=h;}
-    ID3D11DeviceContext_IASetPrimitiveTopology(p->context,D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);ID3D11DeviceContext_VSSetShader(p->context,p->vertex,NULL,0);ID3D11DeviceContext_PSSetShader(p->context,p->pixel,NULL,0);ID3D11DeviceContext_PSSetSamplers(p->context,0,1,&p->sampler);ID3D11DeviceContext_PSSetConstantBuffers(p->context,0,1,&p->params);ID3D11DeviceContext_VSSetConstantBuffers(p->context,0,1,&p->params);
-    D3D11_VIEWPORT horizontal={0,0,(float)vw,(float)h,0,1};float axis[]={1,0,(float)w*framing.uw/vw,0,framing.u,0,framing.uw,1};ID3D11DeviceContext_UpdateSubresource(p->context,(ID3D11Resource *)p->params,0,NULL,axis,0,0);ID3D11DeviceContext_RSSetViewports(p->context,1,&horizontal);ID3D11DeviceContext_OMSetRenderTargets(p->context,1,&p->inter_target,NULL);ID3D11DeviceContext_PSSetShaderResources(p->context,0,1,&p->view);ID3D11DeviceContext_Draw(p->context,4,0);ID3D11DeviceContext_PSSetShaderResources(p->context,0,1,&none);
-    D3D11_VIEWPORT vertical={(float)framing.x,(float)framing.y,(float)vw,(float)vh,0,1};axis[0]=0;axis[1]=1;axis[2]=(float)h*framing.vh/vh;axis[4]=0;axis[5]=framing.v;axis[6]=1;axis[7]=framing.vh;ID3D11DeviceContext_UpdateSubresource(p->context,(ID3D11Resource *)p->params,0,NULL,axis,0,0);ID3D11DeviceContext_RSSetViewports(p->context,1,&vertical);ID3D11DeviceContext_OMSetRenderTargets(p->context,1,&p->target,NULL);ID3D11DeviceContext_PSSetShaderResources(p->context,0,1,&p->inter_view);ID3D11DeviceContext_Draw(p->context,4,0);return present(p);
-}
-static bool output_size(NativePreview *p,uint32_t dw,uint32_t dh){
-    if(!p->output||p->cw!=dw||p->ch!=dh){ID3D11DeviceContext_OMSetRenderTargets(p->context,0,NULL,NULL);DROP(p->target);DROP(p->output);DROP(p->staging);D3D11_TEXTURE2D_DESC d={0};d.Width=dw;d.Height=dh;d.MipLevels=1;d.ArraySize=1;d.Format=DXGI_FORMAT_B8G8R8A8_UNORM;d.SampleDesc.Count=1;d.BindFlags=D3D11_BIND_RENDER_TARGET;
-        if(FAILED(ID3D11Device_CreateTexture2D(p->device,&d,NULL,&p->output))||FAILED(ID3D11Device_CreateRenderTargetView(p->device,(ID3D11Resource *)p->output,NULL,&p->target)))return false;d.BindFlags=0;d.Usage=D3D11_USAGE_STAGING;d.CPUAccessFlags=D3D11_CPU_ACCESS_READ;if(FAILED(ID3D11Device_CreateTexture2D(p->device,&d,NULL,&p->staging)))return false;p->cw=dw;p->ch=dh;}
     return true;
 }
-static bool readback(NativePreview *p,uint8_t *dest,uint32_t w,uint32_t h){
-    ID3D11DeviceContext_CopyResource(p->context,(ID3D11Resource *)p->staging,(ID3D11Resource *)p->output);D3D11_MAPPED_SUBRESOURCE m={0};if(FAILED(ID3D11DeviceContext_Map(p->context,(ID3D11Resource *)p->staging,0,D3D11_MAP_READ,0,&m)))return false;for(UINT y=0;y<h;y++)memcpy(dest+(size_t)y*w*4,(BYTE *)m.pData+(size_t)y*m.RowPitch,w*4);ID3D11DeviceContext_Unmap(p->context,(ID3D11Resource *)p->staging,0);return true;
+bool native_preview_frame(NativePreview *p,const uint8_t *pixels,uint32_t w,uint32_t h){
+    if(!p||!pixels||!w||!h||!native_preview_wait(p,NULL,500))return false;RECT r={0,0,(LONG)p->cw,(LONG)p->ch};if(p->window)GetClientRect(p->window,&r);if(!r.right||!r.bottom)return true;
+    if(p->cw!=(UINT)r.right||p->ch!=(UINT)r.bottom||!p->target){ID3D11DeviceContext_OMSetRenderTargets(p->context,0,NULL,NULL);DROP(p->target);p->cw=0;p->ch=0;if(FAILED(IDXGISwapChain_ResizeBuffers(p->swap,2,(UINT)r.right,(UINT)r.bottom,DXGI_FORMAT_UNKNOWN,p->swap_flags))||!target(p))return false;p->cw=(UINT)r.right;p->ch=(UINT)r.bottom;}
+    if(!upload_bgra(p,pixels,w,h))return false;
+    float bg[]={0,0,0,1};ID3D11DeviceContext_ClearRenderTargetView(p->context,p->target,bg);
+    AwmComposition framing;if(!awm_composition_zoom(w,h,p->cw,p->ch,p->framing,p->zoom,p->pan_x,p->pan_y,&framing))return false;UINT vw=framing.width,vh=framing.height;
+    float sx=(float)w*framing.uw/vw,sy=(float)h*framing.vh/vh;
+    /* Extreme EWA downscales (>3.5x) or software WARP automatically use O(N)
+       separable Lanczos-3 to avoid quadratic 2D tap stalls. */
+    unsigned effective_scaler=p->scaler;
+    if(effective_scaler==AWM_SCALE_EWA_LANCZOS&&(!p->hardware||sx>3.5f||sy>3.5f))effective_scaler=AWM_SCALE_LANCZOS3;
+    ID3D11ShaderResourceView *none=NULL;ID3D11DeviceContext_PSSetShaderResources(p->context,0,1,&none);ID3D11DeviceContext_OMSetRenderTargets(p->context,0,NULL,NULL);
+    ID3D11DeviceContext_IASetPrimitiveTopology(p->context,D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);ID3D11DeviceContext_VSSetShader(p->context,p->vertex,NULL,0);ID3D11DeviceContext_PSSetShader(p->context,p->pixel,NULL,0);ID3D11DeviceContext_PSSetSamplers(p->context,0,1,&p->sampler);ID3D11DeviceContext_PSSetSamplers(p->context,1,1,&p->linear);ID3D11DeviceContext_PSSetConstantBuffers(p->context,0,1,&p->params);ID3D11DeviceContext_VSSetConstantBuffers(p->context,0,1,&p->params);ID3D11DeviceContext_PSSetShaderResources(p->context,1,1,&p->lut_view);
+    if(effective_scaler!=AWM_SCALE_LANCZOS3){D3D11_VIEWPORT viewport={(float)framing.x,(float)framing.y,(float)vw,(float)vh,0,1};float mode=effective_scaler==AWM_SCALE_EWA_LANCZOS?1.0f:effective_scaler==AWM_SCALE_BILINEAR?2.0f:3.0f;float axes[]={sx,sy,0,mode,framing.u,framing.v,framing.uw,framing.vh};ID3D11DeviceContext_UpdateSubresource(p->context,(ID3D11Resource *)p->params,0,NULL,axes,0,0);ID3D11DeviceContext_RSSetViewports(p->context,1,&viewport);ID3D11DeviceContext_OMSetRenderTargets(p->context,1,&p->target,NULL);ID3D11DeviceContext_PSSetShaderResources(p->context,0,1,&p->view);ID3D11DeviceContext_Draw(p->context,4,0);return present(p);}
+    if(p->iw!=vw||p->ih!=h){DROP(p->inter_target);DROP(p->inter_view);DROP(p->inter);D3D11_TEXTURE2D_DESC d={0};d.Width=vw;d.Height=h;d.MipLevels=1;d.ArraySize=1;d.Format=DXGI_FORMAT_R16G16B16A16_FLOAT;d.SampleDesc.Count=1;d.BindFlags=D3D11_BIND_RENDER_TARGET|D3D11_BIND_SHADER_RESOURCE;if(FAILED(ID3D11Device_CreateTexture2D(p->device,&d,NULL,&p->inter))||FAILED(ID3D11Device_CreateRenderTargetView(p->device,(ID3D11Resource *)p->inter,NULL,&p->inter_target))||FAILED(ID3D11Device_CreateShaderResourceView(p->device,(ID3D11Resource *)p->inter,NULL,&p->inter_view)))return false;p->iw=vw;p->ih=h;}
+    D3D11_VIEWPORT horizontal={0,0,(float)vw,(float)h,0,1};float axis[]={1,0,sx,0,framing.u,0,framing.uw,1};ID3D11DeviceContext_UpdateSubresource(p->context,(ID3D11Resource *)p->params,0,NULL,axis,0,0);ID3D11DeviceContext_RSSetViewports(p->context,1,&horizontal);ID3D11DeviceContext_OMSetRenderTargets(p->context,1,&p->inter_target,NULL);ID3D11DeviceContext_PSSetShaderResources(p->context,0,1,&p->view);ID3D11DeviceContext_Draw(p->context,4,0);ID3D11DeviceContext_PSSetShaderResources(p->context,0,1,&none);
+    D3D11_VIEWPORT vertical={(float)framing.x,(float)framing.y,(float)vw,(float)vh,0,1};axis[0]=0;axis[1]=1;axis[2]=sy;axis[4]=0;axis[5]=framing.v;axis[6]=1;axis[7]=framing.vh;ID3D11DeviceContext_UpdateSubresource(p->context,(ID3D11Resource *)p->params,0,NULL,axis,0,0);ID3D11DeviceContext_RSSetViewports(p->context,1,&vertical);ID3D11DeviceContext_OMSetRenderTargets(p->context,1,&p->target,NULL);ID3D11DeviceContext_PSSetShaderResources(p->context,0,1,&p->inter_view);ID3D11DeviceContext_Draw(p->context,4,0);return present(p);
 }
+static bool output_size(NativePreview *p,uint32_t dw,uint32_t dh){
+    if(!p->output||p->cw!=dw||p->ch!=dh){ID3D11DeviceContext_OMSetRenderTargets(p->context,0,NULL,NULL);DROP(p->target);DROP(p->output_view);DROP(p->output);DROP(p->staging);D3D11_TEXTURE2D_DESC d={0};d.Width=dw;d.Height=dh;d.MipLevels=1;d.ArraySize=1;d.Format=DXGI_FORMAT_B8G8R8A8_UNORM;d.SampleDesc.Count=1;d.BindFlags=D3D11_BIND_RENDER_TARGET|D3D11_BIND_SHADER_RESOURCE;
+        if(FAILED(ID3D11Device_CreateTexture2D(p->device,&d,NULL,&p->output))||FAILED(ID3D11Device_CreateRenderTargetView(p->device,(ID3D11Resource *)p->output,NULL,&p->target))||FAILED(ID3D11Device_CreateShaderResourceView(p->device,(ID3D11Resource *)p->output,NULL,&p->output_view)))return false;
+        d.BindFlags=0;d.Usage=D3D11_USAGE_STAGING;d.CPUAccessFlags=D3D11_CPU_ACCESS_READ;if(FAILED(ID3D11Device_CreateTexture2D(p->device,&d,NULL,&p->staging)))return false;p->cw=dw;p->ch=dh;}
+    return true;
+}
+static bool readback_2d(NativePreview *p,ID3D11Texture2D *src,ID3D11Texture2D *stg,uint8_t *dest,uint32_t row_bytes,uint32_t rows){
+    ID3D11DeviceContext_CopyResource(p->context,(ID3D11Resource *)stg,(ID3D11Resource *)src);D3D11_MAPPED_SUBRESOURCE m={0};if(FAILED(ID3D11DeviceContext_Map(p->context,(ID3D11Resource *)stg,0,D3D11_MAP_READ,0,&m)))return false;
+    if(m.RowPitch==row_bytes)memcpy(dest,m.pData,(size_t)row_bytes*rows);else for(UINT y=0;y<rows;y++)memcpy(dest+(size_t)y*row_bytes,(BYTE *)m.pData+(size_t)y*m.RowPitch,row_bytes);
+    ID3D11DeviceContext_Unmap(p->context,(ID3D11Resource *)stg,0);return true;
+}
+static bool readback(NativePreview *p,uint8_t *dest,uint32_t w,uint32_t h){return readback_2d(p,p->output,p->staging,dest,w*4,h);}
 bool native_scale_bgra(NativePreview **slot,const uint8_t *source,uint32_t sw,uint32_t sh,uint8_t *dest,uint32_t dw,uint32_t dh){
-    if(sw==dw&&sh==dh){memcpy(dest,source,(size_t)dw*dh*4);return true;}if(!*slot)*slot=native_preview_create(NULL);NativePreview *p=*slot;if(!p||p->window)return false;
+    bool zoomed=*slot&&(*slot)->zoom>1.0001f;
+    if(sw==dw&&sh==dh&&!zoomed){memcpy(dest,source,(size_t)dw*dh*4);return true;}if(!*slot)*slot=native_preview_create(NULL);NativePreview *p=*slot;if(!p||p->window)return false;
     return output_size(p,dw,dh)&&native_preview_frame(p,source,sw,sh)&&readback(p,dest,dw,dh);
 }
-bool native_yuv_bgra(NativePreview **slot,const NativeYuvFrame *f,uint8_t *dest){
-    if(!slot||!f)return false;uint32_t w=f->width,h=f->height;if(!dest||!f->plane[0]||!f->plane[1]||(!f->nv12&&!f->plane[2])||w<16||h<16||w>3840||h>3840||(uint64_t)w*h>3840u*2160u||(w&1)||(h&1)||f->stride[0]<(int)w||f->stride[1]<(int)(f->nv12?w:w/2)||(!f->nv12&&f->stride[2]<(int)w/2))return false;
-    if(!*slot)*slot=native_preview_create(NULL);NativePreview *p=*slot;if(!p||p->window||!output_size(p,w,h))return false;
+static bool ensure_nv12_targets(NativePreview *p,uint32_t dw,uint32_t dh){
+    if(!p->nv12_y_ps&&FAILED(ID3D11Device_CreatePixelShader(p->device,awm_nv12_y_bytecode,sizeof(awm_nv12_y_bytecode),NULL,&p->nv12_y_ps)))return false;
+    if(!p->nv12_uv_ps&&FAILED(ID3D11Device_CreatePixelShader(p->device,awm_nv12_uv_bytecode,sizeof(awm_nv12_uv_bytecode),NULL,&p->nv12_uv_ps)))return false;
+    if(p->nv12_y&&p->nvw==dw&&p->nvh==dh)return true;
+    ID3D11DeviceContext_OMSetRenderTargets(p->context,0,NULL,NULL);
+    DROP(p->nv12_y_rtv);DROP(p->nv12_y);DROP(p->nv12_y_staging);DROP(p->nv12_uv_rtv);DROP(p->nv12_uv);DROP(p->nv12_uv_staging);
+    D3D11_TEXTURE2D_DESC d={0};d.Width=dw;d.Height=dh;d.MipLevels=d.ArraySize=1;d.Format=DXGI_FORMAT_R8_UNORM;d.SampleDesc.Count=1;d.BindFlags=D3D11_BIND_RENDER_TARGET;
+    if(FAILED(ID3D11Device_CreateTexture2D(p->device,&d,NULL,&p->nv12_y))||FAILED(ID3D11Device_CreateRenderTargetView(p->device,(ID3D11Resource *)p->nv12_y,NULL,&p->nv12_y_rtv)))return false;
+    d.BindFlags=0;d.Usage=D3D11_USAGE_STAGING;d.CPUAccessFlags=D3D11_CPU_ACCESS_READ;if(FAILED(ID3D11Device_CreateTexture2D(p->device,&d,NULL,&p->nv12_y_staging)))return false;
+    d.Width=dw/2;d.Height=dh/2;d.Format=DXGI_FORMAT_R8G8_UNORM;d.Usage=D3D11_USAGE_DEFAULT;d.CPUAccessFlags=0;d.BindFlags=D3D11_BIND_RENDER_TARGET;
+    if(FAILED(ID3D11Device_CreateTexture2D(p->device,&d,NULL,&p->nv12_uv))||FAILED(ID3D11Device_CreateRenderTargetView(p->device,(ID3D11Resource *)p->nv12_uv,NULL,&p->nv12_uv_rtv)))return false;
+    d.BindFlags=0;d.Usage=D3D11_USAGE_STAGING;d.CPUAccessFlags=D3D11_CPU_ACCESS_READ;if(FAILED(ID3D11Device_CreateTexture2D(p->device,&d,NULL,&p->nv12_uv_staging)))return false;
+    p->nvw=dw;p->nvh=dh;return true;
+}
+bool native_scale_nv12(NativePreview **slot,const uint8_t *source,uint32_t sw,uint32_t sh,uint8_t *nv12_dest,uint32_t dw,uint32_t dh){
+    if(!slot||!source||!nv12_dest||dw<16||dh<16||(dw&1)||(dh&1)||dw>3840||dh>3840||(uint64_t)dw*dh>3840u*2160u)return false;
+    if(!*slot)*slot=native_preview_create(NULL);NativePreview *p=*slot;if(!p||p->window)return false;
+    ID3D11ShaderResourceView *bgra_srv=NULL;
+    if(sw==dw&&sh==dh&&p->zoom<=1.0001f){if(!upload_bgra(p,source,sw,sh))return false;bgra_srv=p->view;}
+    else{if(!output_size(p,dw,dh)||!native_preview_frame(p,source,sw,sh))return false;bgra_srv=p->output_view;}
+    if(!ensure_nv12_targets(p,dw,dh))return false;
+    ID3D11ShaderResourceView *none=NULL;ID3D11DeviceContext_OMSetRenderTargets(p->context,0,NULL,NULL);ID3D11DeviceContext_PSSetShaderResources(p->context,0,1,&none);
+    float params[]={0,0,0,0,0,0,1,1};ID3D11DeviceContext_UpdateSubresource(p->context,(ID3D11Resource *)p->params,0,NULL,params,0,0);
+    ID3D11DeviceContext_IASetPrimitiveTopology(p->context,D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);ID3D11DeviceContext_VSSetShader(p->context,p->vertex,NULL,0);ID3D11DeviceContext_VSSetConstantBuffers(p->context,0,1,&p->params);ID3D11DeviceContext_PSSetShaderResources(p->context,0,1,&bgra_srv);
+    D3D11_VIEWPORT vy={0,0,(float)dw,(float)dh,0,1};ID3D11DeviceContext_RSSetViewports(p->context,1,&vy);ID3D11DeviceContext_PSSetShader(p->context,p->nv12_y_ps,NULL,0);ID3D11DeviceContext_OMSetRenderTargets(p->context,1,&p->nv12_y_rtv,NULL);ID3D11DeviceContext_Draw(p->context,4,0);
+    D3D11_VIEWPORT vuv={0,0,(float)(dw/2),(float)(dh/2),0,1};ID3D11DeviceContext_RSSetViewports(p->context,1,&vuv);ID3D11DeviceContext_PSSetShader(p->context,p->nv12_uv_ps,NULL,0);ID3D11DeviceContext_OMSetRenderTargets(p->context,1,&p->nv12_uv_rtv,NULL);ID3D11DeviceContext_Draw(p->context,4,0);
+    ID3D11DeviceContext_PSSetShaderResources(p->context,0,1,&none);ID3D11DeviceContext_OMSetRenderTargets(p->context,0,NULL,NULL);
+    return readback_2d(p,p->nv12_y,p->nv12_y_staging,nv12_dest,dw,dh)&&readback_2d(p,p->nv12_uv,p->nv12_uv_staging,nv12_dest+(size_t)dw*dh,dw,dh/2);
+}
+static bool run_color_pass(NativePreview *p,ID3D11ShaderResourceView **views,uint32_t w,uint32_t h,bool nv12,bool full_range,bool bt709,int rotate,bool mirror,uint8_t *dest){
+    int rot_idx=rotate==90?1:rotate==180?2:rotate==270?3:0;
+    uint32_t ow=(rot_idx==1||rot_idx==3)?h:w,oh=(rot_idx==1||rot_idx==3)?w:h;
+    if(!output_size(p,ow,oh))return false;
     if(!p->color&&FAILED(ID3D11Device_CreatePixelShader(p->device,awm_color_bytecode,sizeof(awm_color_bytecode),NULL,&p->color)))return false;
+    ID3D11ShaderResourceView *none[3]={0};
+    float params[]={full_range?1.f:0.f,bt709?1.f:0.f,nv12?1.f:0.f,(float)(rot_idx|(mirror?4:0)),0,0,1,1};
+    D3D11_VIEWPORT viewport={0,0,(float)ow,(float)oh,0,1};
+    ID3D11DeviceContext_UpdateSubresource(p->context,(ID3D11Resource *)p->params,0,NULL,params,0,0);ID3D11DeviceContext_IASetPrimitiveTopology(p->context,D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);ID3D11DeviceContext_VSSetShader(p->context,p->vertex,NULL,0);ID3D11DeviceContext_VSSetConstantBuffers(p->context,0,1,&p->params);ID3D11DeviceContext_PSSetShader(p->context,p->color,NULL,0);ID3D11DeviceContext_PSSetConstantBuffers(p->context,0,1,&p->params);ID3D11DeviceContext_RSSetViewports(p->context,1,&viewport);ID3D11DeviceContext_OMSetRenderTargets(p->context,1,&p->target,NULL);ID3D11DeviceContext_PSSetShaderResources(p->context,0,3,views);ID3D11DeviceContext_Draw(p->context,4,0);ID3D11DeviceContext_PSSetShaderResources(p->context,0,3,none);
+    return readback(p,dest,ow,oh);
+}
+bool native_yuv_bgra(NativePreview **slot,const NativeYuvFrame *f,uint8_t *dest){
+    if(!slot||!f)return false;uint32_t w=f->width,h=f->height;if(!dest||!f->plane[0]||!f->plane[1]||(!f->nv12&&!f->plane[2])||w<16||h<16||w>3840||h>3840||(uint64_t)w*h>3840u*2160u||(w&1)||(h&1)||f->stride[0]<(int)w||f->stride[1]<(int)(f->nv12?w:w/2)||(!f->nv12&&f->stride[2]<(int)w/2)||(f->rotate!=0&&f->rotate!=90&&f->rotate!=180&&f->rotate!=270))return false;
+    if(!*slot)*slot=native_preview_create(NULL);NativePreview *p=*slot;if(!p||p->window)return false;
     ID3D11ShaderResourceView *none[3]={0};ID3D11DeviceContext_PSSetShaderResources(p->context,0,3,none);
     if(p->yw!=w||p->yh!=h||p->yuv_nv12!=f->nv12){
         for(unsigned i=0;i<3;i++){DROP(p->plane_views[i]);DROP(p->planes[i]);}
@@ -92,8 +170,26 @@ bool native_yuv_bgra(NativePreview **slot,const NativeYuvFrame *f,uint8_t *dest)
         p->yw=w;p->yh=h;p->yuv_nv12=f->nv12;
     }
     for(unsigned i=0;i<(f->nv12?2u:3u);i++){if(p->context1)ID3D11DeviceContext1_UpdateSubresource1(p->context1,(ID3D11Resource *)p->planes[i],0,NULL,f->plane[i],(UINT)f->stride[i],0,D3D11_COPY_DISCARD);else ID3D11DeviceContext_UpdateSubresource(p->context,(ID3D11Resource *)p->planes[i],0,NULL,f->plane[i],(UINT)f->stride[i],0);}
-    float params[]={f->full_range?1.f:0.f,f->bt709?1.f:0.f,f->nv12?1.f:0.f,0,0,0,1,1};D3D11_VIEWPORT viewport={0,0,(float)w,(float)h,0,1};
-    ID3D11DeviceContext_UpdateSubresource(p->context,(ID3D11Resource *)p->params,0,NULL,params,0,0);ID3D11DeviceContext_IASetPrimitiveTopology(p->context,D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);ID3D11DeviceContext_VSSetShader(p->context,p->vertex,NULL,0);ID3D11DeviceContext_VSSetConstantBuffers(p->context,0,1,&p->params);ID3D11DeviceContext_PSSetShader(p->context,p->color,NULL,0);ID3D11DeviceContext_PSSetConstantBuffers(p->context,0,1,&p->params);ID3D11DeviceContext_RSSetViewports(p->context,1,&viewport);ID3D11DeviceContext_OMSetRenderTargets(p->context,1,&p->target,NULL);ID3D11DeviceContext_PSSetShaderResources(p->context,0,3,p->plane_views);ID3D11DeviceContext_Draw(p->context,4,0);ID3D11DeviceContext_PSSetShaderResources(p->context,0,3,none);
-    return readback(p,dest,w,h);
+    return run_color_pass(p,p->plane_views,w,h,f->nv12,f->full_range,f->bt709,f->rotate,f->mirror,dest);
 }
-void native_preview_destroy(NativePreview *p){if(!p)return;if(p->context){ID3D11DeviceContext_ClearState(p->context);ID3D11DeviceContext_Flush(p->context);}if(p->latency)CloseHandle(p->latency);for(unsigned i=0;i<3;i++){DROP(p->plane_views[i]);DROP(p->planes[i]);}DROP(p->color);DROP(p->lut_view);DROP(p->lut);DROP(p->linear);DROP(p->staging);DROP(p->output);DROP(p->params);DROP(p->inter_target);DROP(p->inter_view);DROP(p->inter);DROP(p->view);DROP(p->texture);DROP(p->sampler);DROP(p->pixel);DROP(p->vertex);DROP(p->target);DROP(p->swap);DROP(p->context1);DROP(p->context);DROP(p->device);free(p);}
+bool native_d3d11_nv12_bgra(NativePreview **slot,void *d3d11_texture2d,uint32_t array_slice,uint32_t w,uint32_t h,bool full_range,bool bt709,int rotate,bool mirror,uint8_t *dest){
+    if(!slot||!*slot||!d3d11_texture2d||!dest||w<16||h<16||w>3840||h>3840||(uint64_t)w*h>3840u*2160u||(w&1)||(h&1)||(rotate!=0&&rotate!=90&&rotate!=180&&rotate!=270))return false;
+    NativePreview *p=*slot;if(p->window)return false;
+    ID3D11Texture2D *src=(ID3D11Texture2D *)d3d11_texture2d;D3D11_TEXTURE2D_DESC sd={0};ID3D11Texture2D_GetDesc(src,&sd);
+    if(sd.Format!=DXGI_FORMAT_NV12||sd.Width<w||sd.Height<h)return false;
+    ID3D11ShaderResourceView *none[3]={0};ID3D11DeviceContext_PSSetShaderResources(p->context,0,3,none);
+    if(!p->gpu_nv12||p->gnw!=w||p->gnh!=h){
+        DROP(p->gpu_nv12_views[0]);DROP(p->gpu_nv12_views[1]);DROP(p->gpu_nv12);
+        D3D11_TEXTURE2D_DESC d={0};d.Width=w;d.Height=h;d.MipLevels=d.ArraySize=1;d.Format=DXGI_FORMAT_NV12;d.SampleDesc.Count=1;d.Usage=D3D11_USAGE_DEFAULT;d.BindFlags=D3D11_BIND_SHADER_RESOURCE;
+        if(FAILED(ID3D11Device_CreateTexture2D(p->device,&d,NULL,&p->gpu_nv12)))return false;
+        D3D11_SHADER_RESOURCE_VIEW_DESC sv={0};sv.ViewDimension=D3D11_SRV_DIMENSION_TEXTURE2D;sv.Texture2D.MipLevels=1;
+        sv.Format=DXGI_FORMAT_R8_UNORM;if(FAILED(ID3D11Device_CreateShaderResourceView(p->device,(ID3D11Resource *)p->gpu_nv12,&sv,&p->gpu_nv12_views[0])))return false;
+        sv.Format=DXGI_FORMAT_R8G8_UNORM;if(FAILED(ID3D11Device_CreateShaderResourceView(p->device,(ID3D11Resource *)p->gpu_nv12,&sv,&p->gpu_nv12_views[1])))return false;
+        p->gnw=w;p->gnh=h;
+    }
+    D3D11_BOX box={0,0,0,w,h,1};
+    ID3D11DeviceContext_CopySubresourceRegion(p->context,(ID3D11Resource *)p->gpu_nv12,0,0,0,0,(ID3D11Resource *)src,array_slice,&box);
+    ID3D11ShaderResourceView *views[3]={p->gpu_nv12_views[0],p->gpu_nv12_views[1],NULL};
+    return run_color_pass(p,views,w,h,true,full_range,bt709,rotate,mirror,dest);
+}
+void native_preview_destroy(NativePreview *p){if(!p)return;if(p->context){ID3D11DeviceContext_ClearState(p->context);ID3D11DeviceContext_Flush(p->context);}if(p->latency)CloseHandle(p->latency);for(unsigned i=0;i<3;i++){DROP(p->plane_views[i]);DROP(p->planes[i]);}DROP(p->gpu_nv12_views[0]);DROP(p->gpu_nv12_views[1]);DROP(p->gpu_nv12);DROP(p->nv12_y_rtv);DROP(p->nv12_y);DROP(p->nv12_y_staging);DROP(p->nv12_uv_rtv);DROP(p->nv12_uv);DROP(p->nv12_uv_staging);DROP(p->nv12_y_ps);DROP(p->nv12_uv_ps);DROP(p->color);DROP(p->lut_view);DROP(p->lut);DROP(p->linear);DROP(p->output_view);DROP(p->staging);DROP(p->output);DROP(p->params);DROP(p->inter_target);DROP(p->inter_view);DROP(p->inter);DROP(p->view);DROP(p->texture);DROP(p->sampler);DROP(p->pixel);DROP(p->vertex);DROP(p->target);DROP(p->swap);DROP(p->context1);DROP(p->context);DROP(p->device);free(p);}

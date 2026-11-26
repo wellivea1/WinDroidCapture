@@ -8,7 +8,8 @@ enum {
     UI_DEVICE=20,UI_SOURCE,UI_SELECTOR,UI_PRESET,UI_ORIENTATION,UI_FRAMING,UI_AUDIO,UI_ADVANCED,UI_HIDE,UI_COPY_CAMERA,UI_COPY_MIC,UI_TEST,UI_CAPTURE_INFO,UI_CAMERA_NAME,UI_MIC_NAME,UI_RECEIVER,UI_TRANSPORT,UI_PRIVACY,UI_WIDTH,UI_HEIGHT,UI_FPS,UI_BITRATE,UI_CODEC,UI_ENCODER,UI_ROTATION,UI_MIRROR,UI_ZOOM,UI_SAVED,
     UI_CAPTURE_REFRESH=48,
     UI_PREVIEW_TITLE,UI_SOURCE_TITLE,UI_OUTPUT_TITLE,UI_WIRELESS_TITLE,UI_DEVICE_TITLE,UI_PROPERTY_SCROLL,
-    UI_DEVICE_LIST=60,UI_DEVICE_DETAIL,UI_REFRESH,UI_INSPECT,UI_USB,UI_PAIR_ADDRESS,UI_PAIR_CODE,UI_CONNECT_ADDRESS,UI_PAIR,UI_CONNECT,UI_DISCONNECT,UI_MDNS,UI_WIRELESS_INFO,
+    UI_DIGITAL_ZOOM=55,UI_ZOOM_SCALER,UI_ZOOM_LABEL,UI_ZOOM_RESET,
+    UI_DEVICE_LIST=60,UI_DEVICE_DETAIL,UI_REFRESH,UI_INSPECT,UI_USB,UI_PAIR_ADDRESS,UI_PAIR_CODE,UI_CONNECT_ADDRESS,UI_PAIR,UI_CONNECT,UI_DISCONNECT,UI_MDNS,UI_WIRELESS_INFO,UI_MDNS_LIST,UI_MDNS_USE,
     UI_SETTINGS_TABS=80,UI_OUTPUT_FORMAT,UI_PREVIEW_SCALE,UI_PIPELINE_SCALE,UI_ADB,UI_SCRCPY,UI_BROWSE_ADB,UI_BROWSE_SCRCPY,UI_APPLY_PATHS,UI_INSTALL_CAMERA,UI_REGISTER_CAMERA,UI_INSTALL_MIC,UI_COMPONENTS,UI_VERSIONS,UI_CAPTURE_PATH,UI_RECONNECT,UI_ADB_LINK,UI_SCRCPY_LINK,UI_DRIVER_LINK,
     UI_BEHAVIOR_INFO=99,
     UI_THEME=100,UI_OUTPUT_SETTINGS_TITLE,UI_COMPONENT_TITLE,UI_VIDEO_PACING,
@@ -24,9 +25,11 @@ typedef struct AppUI {
     UIStatusItem status[4];
     RECT settings_sections[3];
     NativeManager *manager;NativeView *view;NativeCaptureProfile profile;Device selected,inspected;PreviewWorker *renderer;int property_fields_width,property_content_height;
-    bool loading,advanced,hide,closing,settings_loaded,probing,profile_dirty,settings_pending;char device_key[24576],caps_key[1024];
+    bool loading,advanced,hide,closing,settings_loaded,probing,profile_dirty,settings_pending,user_deselected;char device_key[24576],caps_key[1024],mdns_key[2048];
     unsigned pending_preview,pending_pipeline,pending_width,pending_fps,pending_theme,pending_pacing,probe_revision;
-    Process receiver;bool receiver_started;wchar_t receiver_state[256];unsigned active_framing;
+    Process receiver;bool receiver_started;wchar_t receiver_state[256];unsigned active_framing;uint64_t view_revision;ULONGLONG last_mdns_poll;
+    float active_zoom,active_pan_x,active_pan_y;
+    bool dragging_preview,drag_zoom_mode;POINT drag_start;float drag_start_zoom,drag_start_pan_x,drag_start_pan_y,drag_anchor_u,drag_anchor_v;
 } AppUI;
 int app_ui_run(HINSTANCE instance,int show);
 HWND ui_control(AppUI *a,HWND parent,const wchar_t *class,const wchar_t *text,DWORD style,int id);
@@ -50,6 +53,8 @@ void ui_select_device(AppUI *a,const Device *d);
 void ui_profile_controls(AppUI *a);
 void ui_layout(AppUI *a);
 void ui_preview_state(AppUI *a);
+void ui_set_zoom(AppUI *a,float zoom,float pan_x,float pan_y);
+void capture_page_sync_zoom(AppUI *a);
 void ui_theme_attach(AppUI *a,HWND control,const wchar_t *class,DWORD style);
 void ui_theme_update(AppUI *a,unsigned mode,bool force);
 bool ui_theme_message(AppUI *a,HWND h,UINT m,WPARAM w,LPARAM l,LRESULT *result);
@@ -63,7 +68,7 @@ bool capture_page_command(AppUI *a,int id,int code);
 void devices_page_create(AppUI *a);
 void devices_page_layout(AppUI *a,int w,int h);
 void devices_page_update(AppUI *a,bool devices_changed);
-bool devices_page_command(AppUI *a,int id);
+bool devices_page_command(AppUI *a,int id,int code);
 void settings_page_create(AppUI *a);
 void settings_page_layout(AppUI *a,int w,int h);
 void settings_page_update(AppUI *a);

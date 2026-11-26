@@ -26,6 +26,7 @@ static const GUID IID_IKsControl={0x28f54685,0x06fd,0x11d2,{0xb2,0x7a,0,0xa0,0xc
 #include "camera_ids.h"
 #include "pacer.h"
 #include "../src/native/frame_hub.h"
+#include "../src/native/thread_class.h"
 #define RELEASE(p) do{if(p){IUnknown_Release((IUnknown *)(p));(p)=NULL;}}while(0)
 static LONG objects;
 static HMODULE module;
@@ -38,8 +39,11 @@ typedef struct Stream {
     IMFMediaStream2 iface;LONG refs;Source *parent;CRITICAL_SECTION lock;
     IMFMediaEventQueue *events;IMFStreamDescriptor *descriptor;IMFAttributes *attributes;
     IMFVideoSampleAllocator *allocator;MF_STREAM_STATE state;BOOL shutdown;
-    HANDLE wake,cancel,timer,thread,pipe;IUnknown *tokens[32];unsigned head,count;
+    HANDLE wake,cancel,timer,thread,pipe,io_event;IUnknown *tokens[32];unsigned head,count;
     UINT32 width,height,fps,format;BOOL selected;LONGLONG next_time;
+    BOOL allocator_ready;UINT32 alloc_w,alloc_h,alloc_fps,alloc_format;
+    BYTE *frame_buf,*stopped_buf;DWORD frame_cap;UINT32 stopped_w,stopped_h,stopped_format;
+    HANDLE shm_file,shm_map;const BYTE *shm_view;UINT32 shm_pid,shm_id;BOOL shm_open;
 } Stream;
 struct Source {
     IMFMediaSourceEx iface;IMFGetService services;IKsControl ks;IMFSampleAllocatorControl allocator_control;
@@ -63,8 +67,9 @@ static HRESULT STDMETHODCALLTYPE source_query(IMFMediaSourceEx *i,REFIID id,void
     else return E_NOINTERFACE;source_add(i);return S_OK;
 }
 static ULONG STDMETHODCALLTYPE stream_add(IMFMediaStream2 *i){return (ULONG)InterlockedIncrement(&((Stream *)i)->refs);}
+static void close_shm(Stream *s){if(s->shm_view){UnmapViewOfFile(s->shm_view);s->shm_view=NULL;}if(s->shm_map){CloseHandle(s->shm_map);s->shm_map=NULL;}if(s->shm_file){CloseHandle(s->shm_file);s->shm_file=NULL;}s->shm_pid=0;s->shm_id=0;s->shm_open=FALSE;}
 static ULONG STDMETHODCALLTYPE stream_release(IMFMediaStream2 *i){
-    Stream *s=(Stream *)i;LONG n=InterlockedDecrement(&s->refs);if(!n){RELEASE(s->events);RELEASE(s->descriptor);RELEASE(s->attributes);RELEASE(s->allocator);if(s->pipe)CloseHandle(s->pipe);if(s->wake)CloseHandle(s->wake);if(s->cancel)CloseHandle(s->cancel);if(s->timer)CloseHandle(s->timer);DeleteCriticalSection(&s->lock);free(s);InterlockedDecrement(&objects);}return (ULONG)n;
+    Stream *s=(Stream *)i;LONG n=InterlockedDecrement(&s->refs);if(!n){RELEASE(s->events);RELEASE(s->descriptor);RELEASE(s->attributes);RELEASE(s->allocator);close_shm(s);if(s->pipe)CloseHandle(s->pipe);if(s->io_event)CloseHandle(s->io_event);if(s->wake)CloseHandle(s->wake);if(s->cancel)CloseHandle(s->cancel);if(s->timer)CloseHandle(s->timer);free(s->frame_buf);free(s->stopped_buf);DeleteCriticalSection(&s->lock);free(s);InterlockedDecrement(&objects);}return (ULONG)n;
 }
 static HRESULT STDMETHODCALLTYPE stream_query(IMFMediaStream2 *i,REFIID id,void **out){
     if(!out)return E_POINTER;*out=NULL;if(!IsEqualIID(id,&IID_IUnknown)&&!IsEqualIID(id,&IID_IMFMediaEventGenerator)&&!IsEqualIID(id,&IID_IMFMediaStream)&&!IsEqualIID(id,&IID_IMFMediaStream2))return E_NOINTERFACE;*out=i;stream_add(i);return S_OK;
@@ -82,49 +87,97 @@ static void stopped_rgb(BYTE *p,UINT32 w,UINT32 h){
     HDC dc=CreateCompatibleDC(NULL);HBITMAP bitmap=CreateDIBSection(dc,&info,DIB_RGB_COLORS,&bits,NULL,0);if(bitmap&&bits){memcpy(bits,p,(size_t)w*h*4);HGDIOBJ old=SelectObject(dc,bitmap);HFONT font=CreateFontW(-(int)(h/22),0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,0,0,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");HGDIOBJ oldfont=SelectObject(dc,font);
         SetTextColor(dc,RGB(210,218,226));SetBkMode(dc,TRANSPARENT);RECT r={0,(LONG)(h/2-40),(LONG)w,(LONG)h};DrawTextW(dc,L"Android camera stopped\nOpen WinDroid Capture and start streaming",-1,&r,DT_CENTER|DT_TOP);GdiFlush();memcpy(p,bits,(size_t)w*h*4);SelectObject(dc,oldfont);SelectObject(dc,old);DeleteObject(font);}if(bitmap)DeleteObject(bitmap);DeleteDC(dc);
 }
-static bool read_pixels(Stream *s,BYTE *pixels,DWORD bytes){
-    if(!s->pipe){s->pipe=CreateFileW(AWM_CAMERA_PIPE,GENERIC_READ|GENERIC_WRITE,0,NULL,OPEN_EXISTING,FILE_FLAG_OVERLAPPED,NULL);if(s->pipe==INVALID_HANDLE_VALUE){s->pipe=NULL;return false;}}
-    AwmCameraRequest q={AWM_FRAME_MAGIC,2,s->width,s->height,s->format};AwmCameraReply r;
-    bool ok=awm_pipe_io(s->pipe,&q,sizeof(q),true,s->cancel,250)&&awm_pipe_io(s->pipe,&r,sizeof(r),false,s->cancel,250);
-    if(ok)ok=r.magic==AWM_FRAME_MAGIC&&r.version==2&&r.width==s->width&&r.height==s->height&&r.format==s->format&&r.bytes==bytes;
-    if(ok)ok=awm_pipe_io(s->pipe,pixels,bytes,false,s->cancel,250);
-    if(!ok){CancelIoEx(s->pipe,NULL);CloseHandle(s->pipe);s->pipe=NULL;return false;}return r.live!=0;
+static const BYTE *map_shm(Stream *s,UINT32 pid,UINT32 id){
+    if(s->shm_open&&s->shm_view&&s->shm_pid==pid&&s->shm_id==id)return s->shm_view;
+    close_shm(s);wchar_t dir[MAX_PATH],path[MAX_PATH];
+    DWORD n=GetEnvironmentVariableW(L"ProgramData",dir,MAX_PATH-80);if(!n||n>=MAX_PATH-80)return NULL;
+    if(pid)swprintf(path,MAX_PATH,L"%s\\AndroidWebcamManager\\awm-cam-%u-%u.shm",dir,pid,id);
+    else swprintf(path,MAX_PATH,L"%s\\AndroidWebcamManager\\awm-cam-slot-%u.shm",dir,id);
+    s->shm_file=CreateFileW(path,GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
+    if(s->shm_file==INVALID_HANDLE_VALUE){s->shm_file=NULL;return NULL;}
+    s->shm_map=CreateFileMappingW(s->shm_file,NULL,PAGE_READONLY,0,AWM_FRAME_BYTES,NULL);
+    if(!s->shm_map){close_shm(s);return NULL;}
+    s->shm_view=MapViewOfFile(s->shm_map,FILE_MAP_READ,0,0,AWM_FRAME_BYTES);
+    if(!s->shm_view){close_shm(s);return NULL;}
+    s->shm_pid=pid;s->shm_id=id;s->shm_open=TRUE;return s->shm_view;
 }
-static HRESULT make_sample(Stream *s,IUnknown *token){
-    DWORD bytes=s->width*s->height*(s->format==AWM_CAMERA_RGB32?4:3)/ (s->format==AWM_CAMERA_RGB32?1:2);
-    BYTE *pixels=malloc(bytes);if(!pixels)return E_OUTOFMEMORY;
-    if(!read_pixels(s,pixels,bytes)){if(s->format==AWM_CAMERA_RGB32)stopped_rgb(pixels,s->width,s->height);else{BYTE *rgb=malloc((size_t)s->width*s->height*4);if(!rgb){free(pixels);return E_OUTOFMEMORY;}stopped_rgb(rgb,s->width,s->height);awm_bgra_to_nv12(rgb,s->width,s->height,pixels);free(rgb);}}
+static const BYTE *read_pixels(Stream *s,UINT32 width,UINT32 height,UINT32 format,DWORD bytes){
+    if(!s->pipe){close_shm(s);s->pipe=CreateFileW(AWM_CAMERA_PIPE,GENERIC_READ|GENERIC_WRITE,0,NULL,OPEN_EXISTING,FILE_FLAG_OVERLAPPED,NULL);if(s->pipe==INVALID_HANDLE_VALUE){s->pipe=NULL;return NULL;}}
+    AwmCameraRequest q={AWM_FRAME_MAGIC,AWM_CAMERA_VERSION_V3,width,height,format};AwmCameraReplyV3 r3={0};
+    bool ok=awm_pipe_io_ev(s->pipe,&q,sizeof(q),true,s->cancel,250,s->io_event)&&awm_pipe_io_ev(s->pipe,&r3,sizeof(r3),false,s->cancel,250,s->io_event);
+    if(ok)ok=r3.base.magic==AWM_FRAME_MAGIC&&r3.base.version==AWM_CAMERA_VERSION_V3&&r3.base.width==width&&r3.base.height==height&&r3.base.format==format;
+    if(!ok){close_shm(s);CancelIoEx(s->pipe,NULL);CloseHandle(s->pipe);s->pipe=NULL;return NULL;}
+    if(!r3.base.live){
+        if(r3.base.bytes){close_shm(s);CancelIoEx(s->pipe,NULL);CloseHandle(s->pipe);s->pipe=NULL;}
+        return NULL;
+    }
+    if(r3.base.bytes==0&&r3.shm_bytes==bytes){
+        const BYTE *view=map_shm(s,r3.shm_pid,r3.shm_id);
+        if(view){MemoryBarrier();return view;}
+        close_shm(s);CancelIoEx(s->pipe,NULL);CloseHandle(s->pipe);s->pipe=NULL;return NULL;
+    }
+    if(r3.base.bytes==bytes){
+        if(s->frame_cap<bytes){BYTE *next=malloc(bytes);if(!next){CancelIoEx(s->pipe,NULL);CloseHandle(s->pipe);s->pipe=NULL;return NULL;}free(s->frame_buf);s->frame_buf=next;s->frame_cap=bytes;}
+        if(awm_pipe_io_ev(s->pipe,s->frame_buf,bytes,false,s->cancel,250,s->io_event))return s->frame_buf;
+    }
+    close_shm(s);CancelIoEx(s->pipe,NULL);CloseHandle(s->pipe);s->pipe=NULL;return NULL;
+}
+static const BYTE *ensure_stopped(Stream *s,UINT32 width,UINT32 height,UINT32 format,DWORD bytes){
+    if(s->stopped_buf&&s->stopped_w==width&&s->stopped_h==height&&s->stopped_format==format)return s->stopped_buf;
+    BYTE *buf=malloc(bytes);if(!buf)return NULL;
+    if(format==AWM_CAMERA_RGB32)stopped_rgb(buf,width,height);
+    else{BYTE *rgb=malloc((size_t)width*height*4);if(!rgb){free(buf);return NULL;}stopped_rgb(rgb,width,height);awm_bgra_to_nv12(rgb,width,height,buf);free(rgb);}
+    free(s->stopped_buf);s->stopped_buf=buf;s->stopped_w=width;s->stopped_h=height;s->stopped_format=format;return buf;
+}
+static HRESULT make_sample(Stream *s,UINT32 width,UINT32 height,UINT32 fps,UINT32 format,IMFVideoSampleAllocator *allocator,IUnknown *token){
+    DWORD bytes=width*height*(format==AWM_CAMERA_RGB32?4:3)/(format==AWM_CAMERA_RGB32?1:2);
+    const BYTE *pixels=read_pixels(s,width,height,format,bytes);
+    if(!pixels){pixels=ensure_stopped(s,width,height,format,bytes);if(!pixels)return E_OUTOFMEMORY;}
     IMFSample *sample=NULL;IMFMediaBuffer *buffer=NULL;HRESULT hr;
-    if(s->allocator)hr=IMFVideoSampleAllocator_AllocateSample(s->allocator,&sample);
+    if(allocator)hr=IMFVideoSampleAllocator_AllocateSample(allocator,&sample);
     else{hr=MFCreateSample(&sample);if(SUCCEEDED(hr)){hr=MFCreateMemoryBuffer(bytes,&buffer);if(SUCCEEDED(hr))hr=IMFSample_AddBuffer(sample,buffer);RELEASE(buffer);}}
     if(SUCCEEDED(hr))hr=IMFSample_GetBufferByIndex(sample,0,&buffer);
     IMF2DBuffer *two=NULL;
     if(SUCCEEDED(hr)&&SUCCEEDED(IMFMediaBuffer_QueryInterface(buffer,&IID_IMF2DBuffer,(void **)&two))){
         BYTE *scan=NULL;LONG stride=0;hr=IMF2DBuffer_Lock2D(two,&scan,&stride);
-        if(SUCCEEDED(hr)){UINT32 row_bytes=s->width*(s->format==1?4:1),rows=s->format==1?s->height:s->height*3/2;
-            if((uint64_t)(stride<0?-(int64_t)stride:stride)<row_bytes)hr=MF_E_BUFFERTOOSMALL;
+        if(SUCCEEDED(hr)){UINT32 row_bytes=width*(format==1?4:1),rows=format==1?height:height*3/2;
+            uint64_t abs_stride=(uint64_t)(stride<0?-(int64_t)stride:stride);
+            if(abs_stride<row_bytes)hr=MF_E_BUFFERTOOSMALL;
+            else if(stride==(LONG)row_bytes)memcpy(scan,pixels,(size_t)row_bytes*rows);
             else for(UINT32 y=0;y<rows;y++)memcpy(scan+(ptrdiff_t)y*stride,pixels+(size_t)y*row_bytes,row_bytes);
             IMF2DBuffer_Unlock2D(two);
         }
-    }else if(SUCCEEDED(hr)){BYTE *p=NULL;DWORD max=0;hr=IMFMediaBuffer_Lock(buffer,&p,&max,NULL);if(SUCCEEDED(hr)){if(max<bytes)hr=MF_E_BUFFERTOOSMALL;else memcpy(p,pixels,bytes);IMFMediaBuffer_Unlock(buffer);}}
-    if(SUCCEEDED(hr))hr=IMFMediaBuffer_SetCurrentLength(buffer,bytes);
+        if(SUCCEEDED(hr)){DWORD cur=0;if(SUCCEEDED(IMFMediaBuffer_GetCurrentLength(buffer,&cur))&&cur==0){DWORD contig=bytes;IMF2DBuffer_GetContiguousLength(two,&contig);IMFMediaBuffer_SetCurrentLength(buffer,contig);}}
+    }else if(SUCCEEDED(hr)){BYTE *p=NULL;DWORD max=0;hr=IMFMediaBuffer_Lock(buffer,&p,&max,NULL);if(SUCCEEDED(hr)){if(max<bytes)hr=MF_E_BUFFERTOOSMALL;else memcpy(p,pixels,bytes);IMFMediaBuffer_Unlock(buffer);}if(SUCCEEDED(hr))hr=IMFMediaBuffer_SetCurrentLength(buffer,bytes);}
     if(SUCCEEDED(hr))hr=IMFSample_SetSampleTime(sample,MFGetSystemTime());
-    if(SUCCEEDED(hr))hr=IMFSample_SetSampleDuration(sample,10000000/s->fps);
+    if(SUCCEEDED(hr))hr=IMFSample_SetSampleDuration(sample,10000000/fps);
     if(SUCCEEDED(hr)&&token)hr=IMFSample_SetUnknown(sample,&MFSampleExtension_Token,token);
-    if(SUCCEEDED(hr))hr=IMFMediaEventQueue_QueueEventParamUnk(s->events,MEMediaSample,&GUID_NULL,S_OK,(IUnknown *)sample);
-    RELEASE(two);RELEASE(buffer);RELEASE(sample);free(pixels);return hr;
+    if(SUCCEEDED(hr)){
+        EnterCriticalSection(&s->lock);
+        hr=(s->shutdown||s->state!=MF_STREAM_STATE_RUNNING)?MF_E_INVALIDREQUEST:IMFMediaEventQueue_QueueEventParamUnk(s->events,MEMediaSample,&GUID_NULL,S_OK,(IUnknown *)sample);
+        LeaveCriticalSection(&s->lock);
+    }
+    RELEASE(two);RELEASE(buffer);RELEASE(sample);return hr;
 }
 static DWORD WINAPI stream_worker(void *context){
-    Stream *s=context;CoInitializeEx(NULL,COINIT_MULTITHREADED);
+    Stream *s=context;CoInitializeEx(NULL,COINIT_MULTITHREADED);HANDLE multimedia=awm_multimedia_begin(L"Capture");
     while(WaitForSingleObject(s->cancel,0)!=WAIT_OBJECT_0){
         HANDLE waits[]={s->cancel,s->wake};if(WaitForMultipleObjects(2,waits,FALSE,1000)==WAIT_OBJECT_0)break;
         for(;;){EnterCriticalSection(&s->lock);if(s->shutdown||s->state!=MF_STREAM_STATE_RUNNING||!s->count){LeaveCriticalSection(&s->lock);break;}
             IUnknown *token=s->tokens[s->head];s->tokens[s->head]=NULL;s->head=(s->head+1)%32;s->count--;LONGLONG now=awm_pacer_now(),due=s->next_time;if(due<now-10000000/s->fps)due=now;s->next_time=due+10000000/s->fps;LeaveCriticalSection(&s->lock);
             int paced=awm_pacer_wait(s->timer,s->cancel,due);if(paced<=0){RELEASE(token);if(paced<0)IMFMediaEventQueue_QueueEventParamVar(s->events,MEError,&GUID_NULL,HRESULT_FROM_WIN32(GetLastError()),NULL);break;}
-            EnterCriticalSection(&s->lock);HRESULT hr=s->shutdown||s->state!=MF_STREAM_STATE_RUNNING?MF_E_INVALIDREQUEST:make_sample(s,token);LeaveCriticalSection(&s->lock);RELEASE(token);
+            UINT32 width=0,height=0,fps=30,format=2;IMFVideoSampleAllocator *allocator=NULL;BOOL active=FALSE;
+            EnterCriticalSection(&s->lock);
+            active=!s->shutdown&&s->state==MF_STREAM_STATE_RUNNING;
+            if(active){width=s->width;height=s->height;fps=s->fps;format=s->format;allocator=s->allocator;if(allocator)IMFVideoSampleAllocator_AddRef(allocator);}
+            LeaveCriticalSection(&s->lock);
+            HRESULT hr=active?make_sample(s,width,height,fps,format,allocator,token):MF_E_INVALIDREQUEST;
+            RELEASE(allocator);RELEASE(token);
             if(FAILED(hr)&&hr!=MF_E_INVALIDREQUEST&&hr!=MF_E_SHUTDOWN)IMFMediaEventQueue_QueueEventParamVar(s->events,MEError,&GUID_NULL,hr,NULL);
         }
-    }CoUninitialize();return 0;
+    }
+    close_shm(s);if(s->pipe){CancelIoEx(s->pipe,NULL);CloseHandle(s->pipe);s->pipe=NULL;}
+    awm_multimedia_end(multimedia);CoUninitialize();return 0;
 }
 static HRESULT STDMETHODCALLTYPE stream_parent(IMFMediaStream2 *i,IMFMediaSource **out){if(!out)return E_POINTER;Stream *s=(Stream *)i;EnterCriticalSection(&s->lock);HRESULT hr=s->shutdown||!s->parent?MF_E_SHUTDOWN:source_query(&s->parent->iface,&IID_IMFMediaSource,(void **)out);LeaveCriticalSection(&s->lock);return hr;}
 static HRESULT STDMETHODCALLTYPE stream_descriptor(IMFMediaStream2 *i,IMFStreamDescriptor **out){Stream *s=(Stream *)i;if(!out)return E_POINTER;if(s->shutdown)return MF_E_SHUTDOWN;*out=s->descriptor;IMFStreamDescriptor_AddRef(*out);return S_OK;}
@@ -136,11 +189,18 @@ static HRESULT STDMETHODCALLTYPE stream_get_state(IMFMediaStream2 *i,MF_STREAM_S
 static const IMFMediaStream2Vtbl stream_vtable={stream_query,stream_add,stream_release,stream_get,stream_begin,stream_end,stream_queue,stream_parent,stream_descriptor,stream_request,stream_set_state,stream_get_state};
 static HRESULT STDMETHODCALLTYPE source_characteristics(IMFMediaSourceEx *i,DWORD *out){if(!out)return E_POINTER;if(((Source *)i)->shutdown)return MF_E_SHUTDOWN;*out=MFMEDIASOURCE_IS_LIVE;return S_OK;}
 static HRESULT STDMETHODCALLTYPE source_presentation(IMFMediaSourceEx *i,IMFPresentationDescriptor **out){Source *s=(Source *)i;if(!out)return E_POINTER;return s->shutdown?MF_E_SHUTDOWN:IMFPresentationDescriptor_Clone(s->presentation,out);}
-static HRESULT configure_stream(Stream *s,IMFMediaType *type){
+static HRESULT configure_stream(Stream *s,IMFMediaType *type,BOOL *unchanged){
     UINT64 size=0,rate=0;GUID subtype;HRESULT hr=IMFMediaType_GetUINT64(type,&MF_MT_FRAME_SIZE,&size);if(SUCCEEDED(hr))hr=IMFMediaType_GetUINT64(type,&MF_MT_FRAME_RATE,&rate);if(SUCCEEDED(hr))hr=IMFMediaType_GetGUID(type,&MF_MT_SUBTYPE,&subtype);
     UINT32 w=(UINT32)(size>>32),h=(UINT32)size,fps=(UINT32)(rate>>32),den=(UINT32)rate;if(FAILED(hr)||!awm_frame_shape(w,h)||den!=1||(fps!=30&&fps!=60)||(!IsEqualGUID(&subtype,&MFVideoFormat_NV12)&&!IsEqualGUID(&subtype,&MFVideoFormat_RGB32)))return MF_E_INVALIDMEDIATYPE;
-    s->width=w;s->height=h;s->fps=fps;s->format=IsEqualGUID(&subtype,&MFVideoFormat_NV12)?2:1;
-    if(s->allocator){IMFVideoSampleAllocator_UninitializeSampleAllocator(s->allocator);hr=IMFVideoSampleAllocator_InitializeSampleAllocator(s->allocator,8,type);}return hr;
+    UINT32 format=IsEqualGUID(&subtype,&MFVideoFormat_NV12)?2:1;
+    BOOL same=(s->width==w&&s->height==h&&s->fps==fps&&s->format==format);
+    if(unchanged)*unchanged=same;
+    s->width=w;s->height=h;s->fps=fps;s->format=format;
+    if(s->allocator&&(!s->allocator_ready||s->alloc_w!=w||s->alloc_h!=h||s->alloc_fps!=fps||s->alloc_format!=format)){
+        if(s->allocator_ready)IMFVideoSampleAllocator_UninitializeSampleAllocator(s->allocator);
+        hr=IMFVideoSampleAllocator_InitializeSampleAllocator(s->allocator,10,type);
+        s->allocator_ready=SUCCEEDED(hr);if(s->allocator_ready){s->alloc_w=w;s->alloc_h=h;s->alloc_fps=fps;s->alloc_format=format;}
+    }return hr;
 }
 static HRESULT STDMETHODCALLTYPE source_start(IMFMediaSourceEx *i,IMFPresentationDescriptor *presentation,const GUID *time,const PROPVARIANT *position){
     Source *s=(Source *)i;if(!presentation||!position)return E_POINTER;if(time&&!IsEqualGUID(time,&GUID_NULL))return MF_E_UNSUPPORTED_TIME_FORMAT;if(position->vt!=VT_EMPTY&&(position->vt!=VT_I8||position->hVal.QuadPart!=0))return MF_E_INVALIDREQUEST;
@@ -148,19 +208,22 @@ static HRESULT STDMETHODCALLTYPE source_start(IMFMediaSourceEx *i,IMFPresentatio
     if(SUCCEEDED(hr)&&count!=1)hr=E_INVALIDARG;if(SUCCEEDED(hr))hr=IMFPresentationDescriptor_GetStreamDescriptorByIndex(presentation,0,&selected,&descriptor);
     DWORD id=1;if(SUCCEEDED(hr))hr=IMFStreamDescriptor_GetStreamIdentifier(descriptor,&id);if(SUCCEEDED(hr)&&id!=0)hr=E_INVALIDARG;
     if(SUCCEEDED(hr)&&selected)hr=IMFStreamDescriptor_GetMediaTypeHandler(descriptor,&handler);if(SUCCEEDED(hr)&&selected)hr=IMFMediaTypeHandler_GetCurrentMediaType(handler,&type);
-    Stream *stream=s->stream;EnterCriticalSection(&stream->lock);
-    if(SUCCEEDED(hr)&&selected){hr=configure_stream(stream,type);if(SUCCEEDED(hr)){IMFMediaTypeHandler *own=NULL;hr=IMFStreamDescriptor_GetMediaTypeHandler(stream->descriptor,&own);if(SUCCEEDED(hr))hr=IMFMediaTypeHandler_SetCurrentMediaType(own,type);RELEASE(own);}}
-    if(SUCCEEDED(hr)){stream->selected=selected;stream->state=selected?MF_STREAM_STATE_RUNNING:MF_STREAM_STATE_STOPPED;stream->next_time=awm_pacer_now();clear_tokens(stream);}
-    LeaveCriticalSection(&stream->lock);if(SUCCEEDED(hr)&&selected){IMFMediaEventQueue_QueueEventParamUnk(s->events,s->started?MEUpdatedStream:MENewStream,&GUID_NULL,S_OK,(IUnknown *)&stream->iface);IMFMediaEventQueue_QueueEventParamVar(stream->events,MEStreamStarted,&GUID_NULL,S_OK,position);}
-    if(SUCCEEDED(hr)){s->started=TRUE;IMFMediaEventQueue_QueueEventParamVar(s->events,MESourceStarted,&GUID_NULL,S_OK,position);}
+    Stream *stream=s->stream;BOOL was_running=FALSE,same_type=FALSE;EnterCriticalSection(&stream->lock);
+    was_running=stream->state==MF_STREAM_STATE_RUNNING;
+    if(SUCCEEDED(hr)&&selected){hr=configure_stream(stream,type,&same_type);if(SUCCEEDED(hr)){IMFMediaTypeHandler *own=NULL;hr=IMFStreamDescriptor_GetMediaTypeHandler(stream->descriptor,&own);if(SUCCEEDED(hr))hr=IMFMediaTypeHandler_SetCurrentMediaType(own,type);RELEASE(own);}}
+    if(SUCCEEDED(hr)){stream->selected=selected;stream->state=selected?MF_STREAM_STATE_RUNNING:MF_STREAM_STATE_STOPPED;if(!was_running||!same_type||!selected){stream->next_time=awm_pacer_now();clear_tokens(stream);}}
+    LeaveCriticalSection(&stream->lock);
+    PROPVARIANT start_time;PropVariantInit(&start_time);start_time.vt=VT_I8;start_time.hVal.QuadPart=MFGetSystemTime();
+    if(SUCCEEDED(hr)&&selected){IMFMediaEventQueue_QueueEventParamUnk(s->events,s->started?MEUpdatedStream:MENewStream,&GUID_NULL,S_OK,(IUnknown *)&stream->iface);IMFMediaEventQueue_QueueEventParamVar(stream->events,MEStreamStarted,&GUID_NULL,S_OK,position);}
+    if(SUCCEEDED(hr)){s->started=TRUE;IMFMediaEventQueue_QueueEventParamVar(s->events,MESourceStarted,&GUID_NULL,S_OK,&start_time);}
     RELEASE(type);RELEASE(handler);RELEASE(descriptor);LeaveCriticalSection(&s->lock);return hr;
 }
-static HRESULT STDMETHODCALLTYPE source_stop(IMFMediaSourceEx *i){Source *s=(Source *)i;EnterCriticalSection(&s->lock);if(s->shutdown){LeaveCriticalSection(&s->lock);return MF_E_SHUTDOWN;}stream_set_state(&s->stream->iface,MF_STREAM_STATE_STOPPED);IMFMediaEventQueue_QueueEventParamVar(s->stream->events,MEStreamStopped,&GUID_NULL,S_OK,NULL);IMFMediaEventQueue_QueueEventParamVar(s->events,MESourceStopped,&GUID_NULL,S_OK,NULL);s->started=FALSE;LeaveCriticalSection(&s->lock);return S_OK;}
+static HRESULT STDMETHODCALLTYPE source_stop(IMFMediaSourceEx *i){Source *s=(Source *)i;EnterCriticalSection(&s->lock);if(s->shutdown){LeaveCriticalSection(&s->lock);return MF_E_SHUTDOWN;}stream_set_state(&s->stream->iface,MF_STREAM_STATE_STOPPED);PROPVARIANT stop_time;PropVariantInit(&stop_time);stop_time.vt=VT_I8;stop_time.hVal.QuadPart=MFGetSystemTime();IMFMediaEventQueue_QueueEventParamVar(s->stream->events,MEStreamStopped,&GUID_NULL,S_OK,NULL);IMFMediaEventQueue_QueueEventParamVar(s->events,MESourceStopped,&GUID_NULL,S_OK,&stop_time);s->started=FALSE;LeaveCriticalSection(&s->lock);return S_OK;}
 static HRESULT STDMETHODCALLTYPE source_pause(IMFMediaSourceEx *i){return ((Source *)i)->shutdown?MF_E_SHUTDOWN:MF_E_INVALID_STATE_TRANSITION;}
 static HRESULT STDMETHODCALLTYPE source_shutdown(IMFMediaSourceEx *i){
     trace("source.Shutdown",S_OK);
     Source *s=(Source *)i;EnterCriticalSection(&s->lock);if(s->shutdown){LeaveCriticalSection(&s->lock);return S_OK;}s->shutdown=TRUE;Stream *stream=s->stream;
-    if(stream){EnterCriticalSection(&stream->lock);stream->shutdown=TRUE;stream->state=MF_STREAM_STATE_STOPPED;clear_tokens(stream);SetEvent(stream->cancel);if(stream->pipe)CancelIoEx(stream->pipe,NULL);LeaveCriticalSection(&stream->lock);}
+    if(stream){EnterCriticalSection(&stream->lock);stream->shutdown=TRUE;stream->state=MF_STREAM_STATE_STOPPED;clear_tokens(stream);SetEvent(stream->cancel);LeaveCriticalSection(&stream->lock);}
     if(s->events)IMFMediaEventQueue_Shutdown(s->events);LeaveCriticalSection(&s->lock);
     if(stream){if(stream->thread){WaitForSingleObject(stream->thread,INFINITE);CloseHandle(stream->thread);stream->thread=NULL;}IMFMediaEventQueue_Shutdown(stream->events);stream->parent=NULL;s->stream=NULL;stream_release(&stream->iface);source_release(i);}return S_OK;
 }
@@ -183,18 +246,20 @@ static HRESULT STDMETHODCALLTYPE ks_event(IKsControl *i,PKSEVENT p,ULONG n,void 
 static const IKsControlVtbl ks_vtable={ks_query,ks_add,ks_release,ks_property,ks_method,ks_event};
 static HRESULT STDMETHODCALLTYPE allocator_set(IMFSampleAllocatorControl *i,DWORD id,IUnknown *value){
     Source *s=CONTAINING_RECORD(i,Source,allocator_control);if(!value)return E_POINTER;if(id)return MF_E_INVALIDSTREAMNUMBER;EnterCriticalSection(&s->lock);HRESULT hr=s->shutdown?MF_E_SHUTDOWN:S_OK;
-    if(SUCCEEDED(hr)){IMFVideoSampleAllocator *a=NULL;hr=IUnknown_QueryInterface(value,&IID_IMFVideoSampleAllocator,(void **)&a);if(SUCCEEDED(hr)){Stream *stream=s->stream;EnterCriticalSection(&stream->lock);RELEASE(stream->allocator);stream->allocator=a;LeaveCriticalSection(&stream->lock);}}LeaveCriticalSection(&s->lock);return hr;
+    if(SUCCEEDED(hr)){IMFVideoSampleAllocator *a=NULL;hr=IUnknown_QueryInterface(value,&IID_IMFVideoSampleAllocator,(void **)&a);if(SUCCEEDED(hr)){Stream *stream=s->stream;EnterCriticalSection(&stream->lock);if(stream->state==MF_STREAM_STATE_RUNNING){hr=MF_E_INVALIDREQUEST;RELEASE(a);}else{RELEASE(stream->allocator);stream->allocator=a;stream->allocator_ready=FALSE;}LeaveCriticalSection(&stream->lock);}}LeaveCriticalSection(&s->lock);return hr;
 }
 static HRESULT STDMETHODCALLTYPE allocator_usage(IMFSampleAllocatorControl *i,DWORD id,DWORD *input,MFSampleAllocatorUsage *usage){Source *s=CONTAINING_RECORD(i,Source,allocator_control);if(!input||!usage)return E_POINTER;if(s->shutdown)return MF_E_SHUTDOWN;if(id)return MF_E_INVALIDSTREAMNUMBER;*input=0;*usage=MFSampleAllocatorUsage_UsesProvidedAllocator;return S_OK;}
 static const IMFSampleAllocatorControlVtbl allocator_vtable={alloc_query,alloc_add,alloc_release,allocator_set,allocator_usage};
 static HRESULT media_type(UINT32 w,UINT32 h,UINT32 fps,REFGUID subtype,IMFMediaType **out){
-    HRESULT hr=MFCreateMediaType(out);if(FAILED(hr))return hr;IMFMediaType *t=*out;IMFMediaType_SetGUID(t,&MF_MT_MAJOR_TYPE,&MFMediaType_Video);IMFMediaType_SetGUID(t,&MF_MT_SUBTYPE,subtype);IMFMediaType_SetUINT32(t,&MF_MT_INTERLACE_MODE,MFVideoInterlace_Progressive);IMFMediaType_SetUINT32(t,&MF_MT_ALL_SAMPLES_INDEPENDENT,TRUE);IMFMediaType_SetUINT64(t,&MF_MT_FRAME_SIZE,((UINT64)w<<32)|h);IMFMediaType_SetUINT64(t,&MF_MT_FRAME_RATE,((UINT64)fps<<32)|1);IMFMediaType_SetUINT64(t,&MF_MT_PIXEL_ASPECT_RATIO,((UINT64)1<<32)|1);IMFMediaType_SetUINT32(t,&MF_MT_VIDEO_PRIMARIES,MFVideoPrimaries_BT709);IMFMediaType_SetUINT32(t,&MF_MT_YUV_MATRIX,MFVideoTransferMatrix_BT709);IMFMediaType_SetUINT32(t,&MF_MT_VIDEO_NOMINAL_RANGE,IsEqualGUID(subtype,&MFVideoFormat_NV12)?MFNominalRange_16_235:MFNominalRange_0_255);IMFMediaType_SetUINT32(t,&MF_MT_DEFAULT_STRIDE,IsEqualGUID(subtype,&MFVideoFormat_NV12)?w:w*4);return S_OK;
+    HRESULT hr=MFCreateMediaType(out);if(FAILED(hr))return hr;IMFMediaType *t=*out;BOOL nv12=IsEqualGUID(subtype,&MFVideoFormat_NV12);
+    IMFMediaType_SetGUID(t,&MF_MT_MAJOR_TYPE,&MFMediaType_Video);IMFMediaType_SetGUID(t,&MF_MT_SUBTYPE,subtype);IMFMediaType_SetUINT32(t,&MF_MT_INTERLACE_MODE,MFVideoInterlace_Progressive);IMFMediaType_SetUINT32(t,&MF_MT_ALL_SAMPLES_INDEPENDENT,TRUE);IMFMediaType_SetUINT64(t,&MF_MT_FRAME_SIZE,((UINT64)w<<32)|h);IMFMediaType_SetUINT64(t,&MF_MT_FRAME_RATE,((UINT64)fps<<32)|1);IMFMediaType_SetUINT64(t,&MF_MT_PIXEL_ASPECT_RATIO,((UINT64)1<<32)|1);IMFMediaType_SetUINT32(t,&MF_MT_VIDEO_PRIMARIES,MFVideoPrimaries_BT709);IMFMediaType_SetUINT32(t,&MF_MT_YUV_MATRIX,MFVideoTransferMatrix_BT709);IMFMediaType_SetUINT32(t,&MF_MT_VIDEO_NOMINAL_RANGE,nv12?MFNominalRange_16_235:MFNominalRange_0_255);IMFMediaType_SetUINT32(t,&MF_MT_DEFAULT_STRIDE,nv12?w:w*4);
+    UINT64 bitrate=(UINT64)w*h*(nv12?12u:32u)*fps;IMFMediaType_SetUINT32(t,&MF_MT_AVG_BITRATE,bitrate>0xffffffffu?0xffffffffu:(UINT32)bitrate);return S_OK;
 }
 static HRESULT source_create(IMFAttributes *attributes,Source **out){
     trace("source.Create",S_OK);
     *out=NULL;Source *s=calloc(1,sizeof(*s));Stream *st=calloc(1,sizeof(*st));if(!s||!st){free(s);free(st);return E_OUTOFMEMORY;}
     InterlockedAdd(&objects,2);s->iface.lpVtbl=&source_vtable;s->services.lpVtbl=&service_vtable;s->ks.lpVtbl=&ks_vtable;s->allocator_control.lpVtbl=&allocator_vtable;s->refs=1;InitializeCriticalSection(&s->lock);
-    st->iface.lpVtbl=&stream_vtable;st->refs=1;st->parent=s;source_add(&s->iface);InitializeCriticalSection(&st->lock);st->state=MF_STREAM_STATE_STOPPED;st->width=1920;st->height=1080;st->fps=30;st->format=2;s->stream=st;st->wake=CreateEventW(NULL,FALSE,FALSE,NULL);st->cancel=CreateEventW(NULL,TRUE,FALSE,NULL);
+    st->iface.lpVtbl=&stream_vtable;st->refs=1;st->parent=s;source_add(&s->iface);InitializeCriticalSection(&st->lock);st->state=MF_STREAM_STATE_STOPPED;st->width=1920;st->height=1080;st->fps=30;st->format=2;s->stream=st;st->wake=CreateEventW(NULL,FALSE,FALSE,NULL);st->cancel=CreateEventW(NULL,TRUE,FALSE,NULL);st->io_event=CreateEventW(NULL,TRUE,FALSE,NULL);
     HRESULT hr=MFCreateEventQueue(&s->events);if(SUCCEEDED(hr))hr=MFCreateEventQueue(&st->events);if(SUCCEEDED(hr))hr=MFCreateAttributes(&s->attributes,8);if(SUCCEEDED(hr)&&attributes)hr=IMFAttributes_CopyAllItems(attributes,s->attributes);if(SUCCEEDED(hr))hr=MFCreateAttributes(&st->attributes,6);
     IMFSensorProfileCollection *profiles=NULL;IMFSensorProfile *legacy=NULL;
     if(SUCCEEDED(hr))hr=MFCreateSensorProfileCollection(&profiles);
@@ -209,7 +274,7 @@ static HRESULT source_create(IMFAttributes *attributes,Source **out){
     if(SUCCEEDED(hr))hr=MFCreateStreamDescriptor(0,8,types,&st->descriptor);
     if(SUCCEEDED(hr)){IMFMediaTypeHandler *handler=NULL;hr=IMFStreamDescriptor_GetMediaTypeHandler(st->descriptor,&handler);if(SUCCEEDED(hr))hr=IMFMediaTypeHandler_SetCurrentMediaType(handler,types[0]);RELEASE(handler);IMFAttributes_CopyAllItems(st->attributes,(IMFAttributes *)st->descriptor);}
     if(SUCCEEDED(hr))hr=MFCreatePresentationDescriptor(1,&st->descriptor,&s->presentation);if(SUCCEEDED(hr))hr=IMFPresentationDescriptor_SelectStream(s->presentation,0);for(unsigned k=0;k<8;k++)RELEASE(types[k]);
-    if(SUCCEEDED(hr)&&(!st->wake||!st->cancel))hr=E_OUTOFMEMORY;
+    if(SUCCEEDED(hr)&&(!st->wake||!st->cancel||!st->io_event))hr=E_OUTOFMEMORY;
     if(SUCCEEDED(hr)){st->timer=CreateWaitableTimerExW(NULL,NULL,CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,TIMER_MODIFY_STATE|SYNCHRONIZE);if(!st->timer)hr=HRESULT_FROM_WIN32(GetLastError());}
     if(SUCCEEDED(hr)){st->thread=CreateThread(NULL,0,stream_worker,st,0,NULL);if(!st->thread)hr=HRESULT_FROM_WIN32(GetLastError());}
     trace("source.Create result",hr);if(FAILED(hr)){source_shutdown(&s->iface);source_release(&s->iface);return hr;}*out=s;return S_OK;

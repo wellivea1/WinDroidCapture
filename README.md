@@ -11,7 +11,7 @@ Choose your phone, start capture, and use it in Discord. The preview is built in
 ![Windows 11 x64](https://img.shields.io/badge/Windows_11-x64-0078D4?style=flat-square)
 ![Early release](https://img.shields.io/badge/status-early_release-DAA520?style=flat-square)
 
-**[Download for Windows](https://github.com/wellivea1/WinDroidCapture/releases/tag/v0.3.0-dev.1)** · **[Setup guide](docs/QUICKSTART.md)** · [Get help](docs/TROUBLESHOOTING.md)
+**[Download for Windows](https://github.com/wellivea1/WinDroidCapture/releases/tag/v0.3.0-dev.2)** · **[Setup guide](docs/QUICKSTART.md)** · [Get help](docs/TROUBLESHOOTING.md)
 
 </div>
 
@@ -28,7 +28,8 @@ Choose your phone, start capture, and use it in Discord. The preview is built in
 
 - Use your phone's **camera or screen** as a Windows camera input.
 - Choose a camera, including direct rear-lens options on the **Pixel 10 Pro XL**.
-- Adjust resolution, frame rate, rotation and mirroring.
+- Scroll or drag over the live preview to **zoom and pan** (`1.0×`–`8.0×`) with 4 live GPU scaling filters (EWA Lanczos sharp, Lanczos 3, Bilinear, Nearest).
+- Adjust rotation, mirroring, framing, resolution and frame rate (geometry and scaling apply live; source/resolution changes restart automatically).
 - Hide the preview while video continues, and choose a light or dark interface.
 
 No OBS or virtual audio cable is needed. Capture stays local, with no account, telemetry or automatic recording.
@@ -37,12 +38,12 @@ No OBS or virtual audio cable is needed. Capture stays local, with no account, t
 
 1. **Download and set up the app.** Windows 11 and the matching phone-connection tools are required; the [setup guide](docs/QUICKSTART.md) walks through both.
 2. **Connect your phone**, unlock it and allow USB debugging. Select the phone in the app.
-3. **Choose Phone camera or Phone screen**, set **Audio: Off**, then press **Start capture**.
+3. **Choose Phone camera or Phone screen** (**Audio** defaults to **Off** while the microphone driver is unsigned), then press **Start capture**.
 4. In **Discord → Settings → Voice & Video → Camera**, select:
 
    **Android Webcam Camera (Windows Virtual Camera)**
 
-Use Discord's **Test Video** to check the picture. To change phones or sources, press **Stop** first. [Camera settings explained](docs/CONTROLS.md) · [Wireless setup](docs/QUICKSTART.md#wireless-connection-optional)
+Use Discord's **Test Video** to check the picture. Scroll or drag on the preview to zoom and pan; double-click to reset. [Camera settings explained](docs/CONTROLS.md) · [Wireless setup](docs/QUICKSTART.md#wireless-connection-optional)
 
 <details>
 <summary><strong>More help and settings</strong></summary>

@@ -4,12 +4,16 @@
 #include "frame_hub.h"
 #include "../audio.h"
 #define NATIVE_UPDATE (WM_APP+12)
+#define AWM_MDNS_MAX 16
+typedef struct MdnsService { char name[128],address[128]; bool pairing; } MdnsService;
+typedef struct MdnsList { MdnsService items[AWM_MDNS_MAX]; int count; } MdnsList;
 typedef enum { N_IDLE,N_STARTING,N_RUNNING,N_STOPPING,N_RECONNECTING,N_ERROR } NativePhase;
-typedef enum { N_REFRESH,N_PROBE,N_START,N_STOP,N_SETTINGS,N_PAIR,N_CONNECT,N_DISCONNECT,N_MDNS,N_REGISTER,N_PROFILE,N_SCALERS } NativeAction;
-typedef struct NativeCommand {NativeAction action;Device device;Profile profile;NativeCaptureProfile capture;bool use_capture;NativeSettings settings;wchar_t address[320],code[16];LONG epoch;} NativeCommand;
+typedef enum { N_REFRESH,N_PROBE,N_START,N_STOP,N_SETTINGS,N_PAIR,N_CONNECT,N_DISCONNECT,N_MDNS,N_MDNS_QUIET,N_REGISTER,N_INSTALL_CAMERA,N_PROFILE,N_SCALERS,N_LIVE_TRANSFORM,N_RESTART } NativeAction;
+typedef struct NativeCommand {NativeAction action;Device device;Profile profile;NativeCaptureProfile capture;bool use_capture;NativeSettings settings;wchar_t address[320],connect_address[320],code[16];LONG epoch;} NativeCommand;
 typedef struct NativeView {
     NativeSettings settings;DeviceList devices;Capabilities capabilities;ToolFeatures features;
-    DisplayList displays;CaptureKind capabilities_kind,active_kind;NativePhase phase;
+    DisplayList displays;MdnsList mdns;CaptureKind capabilities_kind,active_kind;NativePhase phase;
+    bool capabilities_camera_ok,capabilities_screen_ok;
     char capabilities_transport[32],capabilities_version[256],capture_version[256];
     wchar_t mapping_name[200],capture_client[AWM_PATH];
     char capabilities_serial[256],active_serial[256],active_transport[32],adb_version[256],scrcpy_version[256];
@@ -28,4 +32,6 @@ void native_manager_begin_close(NativeManager *m);
 bool native_manager_closed(NativeManager *m);
 bool native_manager_send(NativeManager *m,const NativeCommand *c);
 void native_manager_snapshot(NativeManager *m,NativeView *view);
+void native_manager_set_zoom(NativeManager *m,float zoom,float pan_x,float pan_y);
+uint64_t native_manager_revision(NativeManager *m);
 #endif

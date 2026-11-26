@@ -39,10 +39,11 @@ Screen capture is content-driven. A healthy static screen may reuse its last fra
 
 | Setting | Defined output behavior |
 | --- | --- |
-| Output rotation | Clockwise, applied to preview and Windows output |
-| Mirror output | Horizontal reflection after rotation |
-| Fit — preserve all content | Keeps aspect ratio and adds black bars as necessary |
-| Crop to fill — edges removed | Keeps aspect ratio and intentionally removes edges |
+| Output rotation | Clockwise, applied live on GPU to preview and Windows output |
+| Mirror output | Horizontal reflection after rotation, applied live on GPU |
+| Output zoom & pan | `1.00×`–`8.00×` live GPU crop/scale applied to preview and Windows output. Hover-scroll over the preview to zoom at the cursor, left-drag to zoom (from `1.00×`) or pan 1:1 (when zoomed/cropped), double-click or click **Reset 1.0×** to reset |
+| Fit — preserve all content | Keeps aspect ratio and adds black bars as necessary; zooming smoothly expands toward full output without distortion |
+| Crop to fill — edges removed | Keeps aspect ratio and intentionally removes edges; pannable even at `1.00×` when cropped |
 | Screen Follow phone | Permits source orientation/dimension changes |
 | Screen Lock current orientation | Uses the upstream capture-orientation lock |
 
@@ -53,8 +54,8 @@ Screen orientation capture and final output rotation are separate stages. Discor
 | Selectable list | Choices | When applied |
 | --- | --- | --- |
 | Preferred output | Available camera formats | Next session / receiving-client negotiation; not forced onto Discord |
-| Preview scaling | EWA Lanczos sharp, Lanczos 3, bilinear | Immediately |
-| Pipeline scaling | EWA Lanczos sharp, Lanczos 3, bilinear | Next Start |
+| Preview scaling | EWA Lanczos sharp, Lanczos 3, Bilinear, Nearest — pixel crisp | Immediately (also selectable live from Capture → Source settings) |
+| Pipeline scaling | EWA Lanczos sharp, Lanczos 3, Bilinear, Nearest — pixel crisp | Live (hot-applied to active virtual camera clients) |
 | Presentation pacing | **Smooth priority** (default), Minimum latency | Next Start; shared by camera and screen |
 | Appearance | System, Light, Dark | Immediately; high-contrast colors respected |
 
@@ -64,6 +65,6 @@ Exact-size output copies pixels; actual resizing uses the selected GPU filter on
 
 ## Audio and persistence
 
-**Audio: Off** disables phone microphone capture. Required microphone mode is explicit and refuses startup if the own input is unavailable. There is no speaker-monitor path, cable, system-wide default-device change or desktop-audio fallback.
+**Audio: Off** is the default while the phone microphone kernel driver remains unsigned and inactive (to be revisited once the driver is signed and active). Required microphone mode is explicit and refuses startup if the own input is unavailable. There is no speaker-monitor path, cable, system-wide default-device change or desktop-audio fallback.
 
 Camera and screen preferences are separate per-device profiles. Dependency paths, appearance, output preferences and pacing use Windows DPAPI-protected local storage. Supported older versions are backed up during migration; malformed/future files are refused without replacement. Reconnect is opt-in, bounded to three attempts for the same selected device and canceled by Stop. Capture never starts on application launch.

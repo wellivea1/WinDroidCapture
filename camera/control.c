@@ -15,7 +15,7 @@ int wmain(int argc,wchar_t **argv){
         if(!elevated()){fprintf(stderr,"Install requires elevation; normal operation does not.\n");hr=E_ACCESSDENIED;}
         else{
             wchar_t logs[AWM_PATH];GetEnvironmentVariableW(L"ProgramData",logs,AWM_PATH);PathAppendW(logs,L"AndroidWebcamManager");PSECURITY_DESCRIPTOR sd=NULL;
-            if(ConvertStringSecurityDescriptorToSecurityDescriptorW(L"D:P(A;OICI;GA;;;SY)(A;OICI;GA;;;BA)(A;OICI;GA;;;LS)(A;OICI;GRGW;;;IU)",SDDL_REVISION_1,&sd,NULL)){SECURITY_ATTRIBUTES sa={sizeof(sa),sd,FALSE};CreateDirectoryW(logs,&sa);LocalFree(sd);}
+            if(ConvertStringSecurityDescriptorToSecurityDescriptorW(L"D:P(A;OICI;GA;;;SY)(A;OICI;GA;;;BA)(A;OICI;GA;;;LS)(A;OICI;GRGW;;;IU)(A;OICI;GA;;;CO)",SDDL_REVISION_1,&sd,NULL)){SECURITY_ATTRIBUTES sa={sizeof(sa),sd,FALSE};CreateDirectoryW(logs,&sa);LocalFree(sd);}
             wchar_t from[AWM_PATH],to[AWM_PATH];PWSTR pf=NULL;
             GetModuleFileNameW(NULL,from,AWM_PATH);PathRemoveFileSpecW(from);PathAppendW(from,L"awm-camera-source.dll");
             hr=SHGetKnownFolderPath(&FOLDERID_ProgramFiles,0,NULL,&pf);

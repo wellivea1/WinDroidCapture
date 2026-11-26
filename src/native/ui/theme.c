@@ -294,7 +294,7 @@ bool ui_theme_message(AppUI *a,HWND h,UINT m,WPARAM w,LPARAM l,LRESULT *result){
     }
     if(m==WM_CTLCOLORSTATIC||m==WM_CTLCOLOREDIT||m==WM_CTLCOLORLISTBOX||m==WM_CTLCOLORBTN||m==WM_CTLCOLORSCROLLBAR){
         HDC dc=(HDC)w;HWND control=(HWND)l;wchar_t class[40];GetClassNameW(control,class,40);int id=GetDlgCtrlID(control);bool field=!wcscmp(class,L"EDIT")||m==WM_CTLCOLORLISTBOX;
-        COLORREF color=id==UI_MIC_NAME&&!a->view->microphone_installed?a->warning:(id==UI_TRANSPORT||id==UI_PRIVACY||id==UI_CAPTURE_INFO||id==UI_SAVED? a->muted:a->text);
+        COLORREF color=id==UI_MIC_NAME&&!a->view->microphone_installed?a->warning:(id==UI_ZOOM_LABEL?(a->active_zoom>1.005f?a->info:a->muted):(id==UI_TRANSPORT||id==UI_PRIVACY||id==UI_CAPTURE_INFO||id==UI_SAVED?a->muted:a->text));
         bool navigation_status=h==a->window&&(id==UI_STATUS||id==UI_NOTICE);
         SetTextColor(dc,color);SetBkColor(dc,field?a->surface:navigation_status?a->nav:a->bg);*result=(LRESULT)(field?a->white:navigation_status?a->nav_brush:a->background);return true;
     }

@@ -6,9 +6,10 @@
 
 | Layer | Latest retained state | Evidence scope |
 | --- | --- | --- |
-| Core, profiles and simulated lifecycle | **PASS:** 55 + 62 + 38 + 138 checks | Clearly labeled synthetic/fake inputs; no physical success inferred |
-| GPU and COM camera component | **PASS** | Real Windows components with synthetic/stopped images |
-| Shared publication timing | **FAIL retained** | October 13 repeat dropped one frame at 60 FPS; no complete-suite pass claimed |
+| Core, profiles and simulated lifecycle | **PASS:** 55 + 72 + 38 + 154 checks | Clearly labeled synthetic/fake inputs; no physical success inferred |
+| GPU and COM camera component | **PASS** | Real D3D11 (4 scalers, GPU rotate/mirror, GPU NV12, zoomed exact-size BGRA/NV12) and COM v3 SHM / `MEUpdatedStream` with synthetic/stopped frames |
+| Shared publication timing | **PASS (synthetic 30 & 60 FPS)** | 0 drops, 0 late (30 FPS SD 11.410→0.312 ms; 60 FPS SD 5.642→0.238 ms) after fixing O(1) pop, lock split, and bounded clock-drift estimator; historical Oct 13 failure retained below |
+| UI layout audit (125% DPI) | **PASS:** 0 clipped, 0 overlaps | Measured live across Capture (normal + Advanced), Devices, Settings, Diagnostics |
 | Pixel camera to Windows receiver | **VERIFIED VIDEO** | Direct wide source plus ultrawide/telephoto receiver checks; tested modes only |
 | Pixel camera to Discord | **VERIFIED earlier local Test Video** | Visible selected-phone feed; latest direct-member changes not retested in Discord |
 | Pixel screen to Windows receiver | **VERIFIED VIDEO** | Static/motion tests; latest screen clock-offset refinement not physically retested |
@@ -22,6 +23,24 @@
 Updated: 2026-10-13. Development build 0.3.0. Windows 11 Pro x64 10.0.26200, build 26200; RTX 5070 Ti. October 12 runs used an authorized USB Pixel 10 Pro XL, Android 17; the phone then became unavailable. It returned for the October 13 direct-camera investigation documented below. Raw device identifiers and phone media are excluded from the published package. The preserved 0.2.0 report is in docs/history.
 
 **Release state:** app-owned camera registration and real phone camera video in Discord's local Test Video were previously verified. Phone screen capture also delivers through the same Windows camera to the explicit local receiver, including static-screen frame reuse. Shared pacing and GPU-processing changes apply to both source modes, with Smooth priority as the default selectable setting. Real screen traces show reduced arrival variation at the integrated preview, with a measured buffering cost and residual receiver jitter. The October 13 build adds physical-member discovery and direct capture for the Pixel, with real camera-mode checks through the current pipeline. The latest screen clock-offset refinement remains physically untested. The custom microphone driver builds and passes static package checks, but is unsigned and not loaded. The webcam-plus-microphone requirement is therefore incomplete. Discord smoothness remains below the user's expectation. No live call, remote transmission or media recording was performed.
+
+## 0.3.0-dev.2 automated, GPU, COM and UI verification
+
+The 0.3.0-dev.2 update includes performance and automaticity fixes (O(1) pointer-swap video queue with bounded drift estimator, D3D11VA hardware decode with CPU fallback, GPU rotation/mirroring and GPU BGRA→NV12 packing, cross-session SHM camera protocol v3 with v2 fallback and 0-byte stopped replies, fast `<mapping>.Stop` shutdown, adaptive EWA Lanczos downscale fallback, event-driven ADB `host:track-devices-l` tracking, single-pass dual-source probing, structured wireless mDNS picker + chained pair/connect, smart single-device pre-selection without auto-start, live hot-apply transform/zoom/scaling, one-click elevated camera setup, default Audio Off while the microphone driver is unsigned, and interactive hover-scroll/drag zoom & pan with 4 live GPU scaling filters including `Nearest — pixel crisp`).
+
+- **Automated C/Python test suite (`scripts/test.ps1`):** **PASS, 0 failures** across all suites:
+  - Core/protocol/settings/ring: `55 checks, 0 failures`
+  - Screen/profile/zoom composition/persistence/liveness: `72 checks, 0 failures` (verifies default `audio = false`, zoom/pan math & clamping, `Nearest` scaler persistence)
+  - Physical-camera device profiles: `38 checks, 0 failures`
+  - Simulated native lifecycle: `154 checks, 0 failures` (verifies single-pass dual-source probe, live transform/zoom/scaler, atomic restart, structured mDNS + pair-connect, USB replug reconnect, required-mic refusal)
+  - Actual D3D11 synthetic GPU tests: **PASS** — all 4 selectable filters (1920×1080 → 1280×720 warm means: EWA `1.018 ms`, Lanczos 3 `0.760 ms`, Bilinear `0.705 ms`, Nearest `0.699 ms`), 8 GPU rotate/mirror transforms (0-diff exact), 1080p NV12→BGRA `0.746 ms` mean, 1080p→720p EWA+NV12 `0.855 ms` mean, exact-size zoomed BGRA & NV12 crop+scale, and 6× adaptive EWA downscale
+  - Synthetic preview pacing (30/60 FPS): `100.00%` keep, `0` skipped, `0` copy misses
+  - Synthetic shared video queue (30/60 FPS): `90/90` published, `0` drops, `0` late (`0.312 ms` / `0.238 ms` SD)
+  - Actual COM camera source component: **PASS** — activation, stopped slate, shared re-Start `MEUpdatedStream`, v3 SHM zero-pipe-payload live transfer & 0-byte stopped reply, 30/60 FPS pacer (`0.314` / `0.322 ms` mean wake error), Stop/Shutdown/unload
+  - Python timing attribution tests: `7/7 OK`
+- **Live 125% DPI (`dpi=120`) UI layout audit:** `clipped=0 overlaps=0` across Capture (normal + Advanced), Devices, Settings, and Diagnostics.
+- **Privacy & binary boundary scan:** 0 developer-profile path strings across modified source and all 9 shipped executables/DLLs.
+- **Physical phone / Discord / FrameServer runtime delivery:** **NOT RETESTED** for 0.3.0-dev.2; historical physical observations and all remaining blockers below remain explicitly retained.
 
 ## October 13 product rename and SVG logo sheet
 

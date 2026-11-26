@@ -7,17 +7,21 @@
 #include "util/log.h"
 #include "util/tick.h"
 #include "native/protocol.h"
-typedef struct Exporter {HANDLE pipe;uint32_t sequence;bool failed;} Exporter;
+#define AWM_COALESCE_MAX 65536u
+typedef struct Exporter {HANDLE pipe,write_event;uint32_t sequence;bool failed;BYTE *batch;} Exporter;
 static Exporter *exporter(struct sc_recorder *r){return (Exporter *)r->ctx;}
-static bool send_bytes(HANDLE pipe,const void *data,DWORD bytes){
-    const BYTE *p=data;while(bytes){OVERLAPPED o={0};o.hEvent=CreateEventW(NULL,TRUE,FALSE,NULL);if(!o.hEvent)return false;DWORD n=0;BOOL ok=WriteFile(pipe,p,bytes,&n,&o);
-        if(!ok&&GetLastError()==ERROR_IO_PENDING){DWORD wait=WaitForSingleObject(o.hEvent,1000);if(wait==WAIT_OBJECT_0)ok=GetOverlappedResult(pipe,&o,&n,FALSE);else{CancelIoEx(pipe,&o);GetOverlappedResult(pipe,&o,&n,TRUE);ok=FALSE;}}
-        CloseHandle(o.hEvent);if(!ok||!n)return false;p+=n;bytes-=n;}return true;
+static bool send_bytes(Exporter *e,const void *data,DWORD bytes){
+    const BYTE *p=data;while(bytes){ResetEvent(e->write_event);OVERLAPPED o={0};o.hEvent=e->write_event;DWORD n=0;BOOL ok=WriteFile(e->pipe,p,bytes,&n,&o);
+        if(!ok&&GetLastError()==ERROR_IO_PENDING){DWORD wait=WaitForSingleObject(e->write_event,1000);if(wait==WAIT_OBJECT_0)ok=GetOverlappedResult(e->pipe,&o,&n,FALSE);else{CancelIoEx(e->pipe,&o);GetOverlappedResult(e->pipe,&o,&n,TRUE);ok=FALSE;}}
+        if(!ok||!n)return false;p+=n;bytes-=n;}return true;
 }
 static bool send_locked(struct sc_recorder *r,AwmPacketHeader *h,const void *data){
     Exporter *e=exporter(r);if(r->stopped||e->failed)return false;
     h->magic=AWM_EXPORT_MAGIC;h->version=AWM_PROTOCOL_VERSION;h->sequence=++e->sequence;
-    bool ok=send_bytes(e->pipe,h,sizeof(*h))&&(!h->size||send_bytes(e->pipe,data,h->size));if(!ok){e->failed=true;r->stopped=true;sc_cond_signal(&r->cond);}return ok;
+    bool ok;
+    if(e->batch&&h->size<=AWM_COALESCE_MAX){memcpy(e->batch,h,sizeof(*h));if(h->size)memcpy(e->batch+sizeof(*h),data,h->size);ok=send_bytes(e,e->batch,(DWORD)(sizeof(*h)+h->size));}
+    else ok=send_bytes(e,h,sizeof(*h))&&(!h->size||send_bytes(e,data,h->size));
+    if(!ok){e->failed=true;r->stopped=true;sc_cond_signal(&r->cond);}return ok;
 }
 static struct sc_recorder *from_sink(struct sc_packet_sink *s,bool audio){return (struct sc_recorder *)((char *)s-(audio?offsetof(struct sc_recorder,audio_packet_sink):offsetof(struct sc_recorder,video_packet_sink)));}
 static bool open_sink(struct sc_packet_sink *s,const AVCodecParameters *p,const struct sc_stream_session *session,bool audio){
@@ -52,9 +56,11 @@ bool sc_recorder_init(struct sc_recorder *r,const char *name,enum sc_record_form
 }
 bool sc_recorder_start(struct sc_recorder *r){
     wchar_t name[512];if(!MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,r->filename,-1,name,512))return false;
-    Exporter *e=exporter(r);e->pipe=CreateFileW(name,GENERIC_WRITE,0,NULL,OPEN_EXISTING,FILE_FLAG_OVERLAPPED,NULL);if(e->pipe==INVALID_HANDLE_VALUE){e->pipe=NULL;LOGE("AWM export pipe unavailable (%lu)",GetLastError());return false;}
+    Exporter *e=exporter(r);e->write_event=CreateEventW(NULL,TRUE,FALSE,NULL);e->batch=malloc(sizeof(AwmPacketHeader)+AWM_COALESCE_MAX);
+    if(!e->write_event){free(e->batch);e->batch=NULL;return false;}
+    e->pipe=CreateFileW(name,GENERIC_WRITE,0,NULL,OPEN_EXISTING,FILE_FLAG_OVERLAPPED,NULL);if(e->pipe==INVALID_HANDLE_VALUE){e->pipe=NULL;LOGE("AWM export pipe unavailable (%lu)",GetLastError());return false;}
     LOGI("AWM export protocol 3; ordered heartbeat/session events, no media files or speaker playback");return sc_thread_create(&r->thread,monitor,"AWM export",r);
 }
 void sc_recorder_stop(struct sc_recorder *r){sc_mutex_lock(&r->mutex);r->stopped=true;sc_cond_signal(&r->cond);sc_mutex_unlock(&r->mutex);}
 void sc_recorder_join(struct sc_recorder *r){sc_thread_join(&r->thread,NULL);}
-void sc_recorder_destroy(struct sc_recorder *r){Exporter *e=exporter(r);if(e&&e->pipe)CloseHandle(e->pipe);free(e);free(r->filename);sc_cond_destroy(&r->cond);sc_mutex_destroy(&r->mutex);}
+void sc_recorder_destroy(struct sc_recorder *r){Exporter *e=exporter(r);if(e){if(e->pipe)CloseHandle(e->pipe);if(e->write_event)CloseHandle(e->write_event);free(e->batch);free(e);}free(r->filename);sc_cond_destroy(&r->cond);sc_mutex_destroy(&r->mutex);}

@@ -1,4 +1,4 @@
-param([switch]$SkipBuild,[switch]$SkipTests)
+﻿param([switch]$SkipBuild,[switch]$SkipTests)
 $ErrorActionPreference='Stop'
 $taskRoot=Split-Path $PSScriptRoot -Parent
 if(!$SkipBuild){& (Join-Path $PSScriptRoot 'build.ps1')}
@@ -46,8 +46,9 @@ Unsigned kernel driver binaries are omitted; driver source is under source/drive
 .\scripts\run.ps1 -ScrcpyFolder 'C:\path\scrcpy-win64-v5.0.1'
 ```
 
-Select Audio: Off for video tests. In Discord choose
-Android Webcam Camera (Windows Virtual Camera). Own microphone signing/kernel
+Audio defaults to Off while the phone microphone kernel driver is unsigned/inactive.
+In Discord choose Android Webcam Camera (Windows Virtual Camera). Hover-scroll or drag
+over the preview to zoom and pan; double-click to reset. Own microphone signing/kernel
 validation, receiver-sharing and final smoothness checks remain incomplete.
 SHA256SUMS.txt covers the included files; third-party runtime DLLs, raw evidence,
 credentials, user settings, downloaded tools and development caches are excluded.

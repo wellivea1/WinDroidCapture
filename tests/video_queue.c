@@ -20,7 +20,9 @@ int main(void){
     if(paced(30)||paced(60))return 1;
     AwmHub hub={0};if(!awm_hub_open(&hub,true))return 1;AwmVideoQueue *q=awm_video_queue_create(&hub,30,true,1);BYTE pixels[16*16*4]={0};AwmVideoTiming timing={0};
     if(!q||!awm_video_queue_push(q,pixels,16,16,0,&timing))return 1;awm_video_queue_reconfigure(q);Sleep(50);if(hub.view->live||hub.view->video_frames)return 1;
-    for(unsigned i=0;i<10;i++)if(!awm_video_queue_push(q,pixels,16,16,i*33333,&timing))return 1;AwmVideoQueueStats stats;awm_video_queue_stats(q,&stats);if(!stats.dropped)return 1;
+    /* Reconfigure must not poison the queue; subsequent frames must still publish. */
+    double now=awm_clock_ms();timing.packet_ms=now;if(!awm_video_queue_push(q,pixels,16,16,33333,&timing))return 1;Sleep(80);if(!hub.view->live||hub.view->video_frames!=1)return 1;
+    for(unsigned i=0;i<10;i++)if(!awm_video_queue_push(q,pixels,16,16,(i+2)*33333,&timing))return 1;AwmVideoQueueStats stats;awm_video_queue_stats(q,&stats);if(!stats.dropped)return 1;
     awm_hub_stop(&hub);uint64_t frames=hub.view->video_frames;awm_video_queue_destroy(q);Sleep(50);if(hub.view->live||hub.view->video_frames!=frames)return 1;
     awm_hub_close(&hub);if(!awm_hub_open(&hub,true))return 1;q=awm_video_queue_create(&hub,30,false,2);if(!q||!awm_video_queue_push(q,pixels,16,16,1000,&timing)||hub.view->video_frames!=1)return 1;awm_video_queue_stats(q,&stats);if(stats.delay_ms||awm_video_queue_push(q,pixels,16,16,-1,&timing))return 1;awm_hub_stop(&hub);awm_video_queue_destroy(q);awm_hub_close(&hub);
     puts("PASS SYNTHETIC video queue: bounded overflow reported, epoch flush, Stop discards pending frames, immediate mode, rejected negative PTS. No hardware assertion.");return 0;

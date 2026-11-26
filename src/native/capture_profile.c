@@ -19,8 +19,12 @@ void native_capture_to_legacy(const NativeCaptureProfile *p,Profile *v){
 }
 void native_capture_default(NativeCaptureProfile *p,CaptureKind kind,int preset){
     Profile v;profile_default(&v,preset);native_capture_from_legacy(p,&v);p->kind=kind;
+    /* Default audio to Off while the phone microphone kernel driver is unsigned/inactive
+       so capture starts cleanly out of the box. Revisit to default On once the signed
+       driver is installed and active. */
+    p->audio=false;
     if(kind==CAPTURE_SCREEN){p->screen.display_id=-1;p->screen.max_size=preset==1?0:1920;p->screen.fps_limit=preset==2?60:30;
-        p->encoding.bitrate_mbps=preset==1?24:preset==2?24:16;p->audio=false;}
+        p->encoding.bitrate_mbps=preset==1?24:preset==2?24:16;}
 }
 bool native_capture_validate(const NativeCaptureProfile *p,const Device *d,const ToolFeatures *f,char *err,size_t cap){
     if(d->state!=DEV_AUTHORIZED)return invalid(err,cap,"Select an authorized ADB transport.");

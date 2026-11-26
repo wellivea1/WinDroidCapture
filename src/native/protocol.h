@@ -5,6 +5,7 @@
 #define AWM_EXPORT_VERSION 3u
 #define AWM_HUB_VERSION 3u
 #define AWM_CAMERA_VERSION 2u
+#define AWM_CAMERA_VERSION_V3 3u
 #define AWM_PROTOCOL_VERSION AWM_EXPORT_VERSION
 #define AWM_PACKET_MAX (16u*1024u*1024u)
 #define AWM_STREAM_VIDEO 0u
@@ -46,11 +47,13 @@ typedef struct AwmFrameHub {
     uint64_t video_frames,audio_frames,heartbeat_ms;
     float microphone_peak;
     uint32_t error_code;
+    volatile long live_rotate,live_mirror,live_framing,live_scaler,live_zoom_milli,live_pan_x_milli,live_pan_y_milli;
     char status[512];
     AwmFrameSlot slots[2];
 } AwmFrameHub;
 typedef struct AwmCameraRequest { uint32_t magic,version,width,height,format; } AwmCameraRequest;
 typedef struct AwmCameraReply { uint32_t magic,version,width,height,format,bytes,live,generation; int64_t pts_us; } AwmCameraReply;
+typedef struct AwmCameraReplyV3 { AwmCameraReply base; uint32_t shm_pid,shm_id,shm_bytes,reserved; } AwmCameraReplyV3;
 #define AWM_CAMERA_RGB32 1u
 #define AWM_CAMERA_NV12 2u
 #endif

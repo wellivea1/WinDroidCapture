@@ -32,41 +32,60 @@ bool awm_hub_open_named(AwmHub *h,bool create,const wchar_t *name){
     if(!h->view){CloseHandle(h->mapping);memset(h,0,sizeof(*h));return false;}
     if(create){memset(h->view,0,sizeof(*h->view));h->view->version=AWM_HUB_VERSION;h->view->generation=GetCurrentProcessId()^(uint32_t)GetTickCount64();h->view->video_epoch=1;}
     else if(h->view->magic!=AWM_FRAME_MAGIC||h->view->version!=AWM_HUB_VERSION){awm_hub_close(h);return false;}
-    wchar_t event_name[256];if(wcslen(name)>240){awm_hub_close(h);SetLastError(ERROR_INVALID_NAME);return false;}swprintf(event_name,256,L"%s.Ready",name);
-    if(create){if(!awm_user_security(&sa,&sd,false)){awm_hub_close(h);return false;}h->ready=CreateEventW(&sa,FALSE,FALSE,event_name);LocalFree(sd);if(!h->ready){awm_hub_close(h);return false;}}
-    else h->ready=OpenEventW(SYNCHRONIZE|EVENT_MODIFY_STATE,FALSE,event_name);
+    wchar_t event_name[256],stop_name[256];if(wcslen(name)>240){awm_hub_close(h);SetLastError(ERROR_INVALID_NAME);return false;}swprintf(event_name,256,L"%s.Ready",name);swprintf(stop_name,256,L"%s.Stop",name);
+    if(create){if(!awm_user_security(&sa,&sd,false)){awm_hub_close(h);return false;}h->ready=CreateEventW(&sa,FALSE,FALSE,event_name);h->stop_event=CreateEventW(&sa,TRUE,FALSE,stop_name);LocalFree(sd);if(!h->ready||!h->stop_event){awm_hub_close(h);return false;}}
+    else{h->ready=OpenEventW(SYNCHRONIZE|EVENT_MODIFY_STATE,FALSE,event_name);h->stop_event=OpenEventW(SYNCHRONIZE|EVENT_MODIFY_STATE,FALSE,stop_name);}
     if(create)InterlockedExchange((volatile LONG *)&h->view->magic,AWM_FRAME_MAGIC);
     return true;
 }
-bool awm_hub_live(const AwmHub *h,uint64_t now){if(!h->view||!h->view->live||h->view->stop||now-h->view->session_heartbeat_ms>3000)return false;int i=(int)InterlockedCompareExchange(&h->view->published,0,0);return i>=0&&i<2&&(h->view->source_kind==1||now-h->view->slots[i].heartbeat_ms<=1000);}
+static uint64_t age_ms(uint64_t now,uint64_t then){return now>then?now-then:0;}
+bool awm_hub_live(const AwmHub *h,uint64_t now){
+    if(!h->view||!h->view->live||h->view->stop)return false;
+    uint64_t session_hb=*(volatile const uint64_t *)&h->view->session_heartbeat_ms;
+    if(!session_hb||age_ms(now,session_hb)>3000)return false;
+    int i=(int)InterlockedCompareExchange(&h->view->published,0,0);
+    if(i<0||i>=2)return false;
+    uint64_t slot_hb=*(volatile const uint64_t *)&h->view->slots[i].heartbeat_ms;
+    return h->view->source_kind==1||(slot_hb&&age_ms(now,slot_hb)<=1000);
+}
 void awm_hub_reconfigure(AwmHub *h){if(h->view){InterlockedExchange(&h->view->live,0);h->view->video_epoch++;if(h->ready)SetEvent(h->ready);}}
-void awm_hub_close(AwmHub *h){if(h->ready)CloseHandle(h->ready);if(h->view)UnmapViewOfFile(h->view);if(h->mapping)CloseHandle(h->mapping);memset(h,0,sizeof(*h));}
+void awm_hub_close(AwmHub *h){if(h->stop_event)CloseHandle(h->stop_event);if(h->ready)CloseHandle(h->ready);if(h->view)UnmapViewOfFile(h->view);if(h->mapping)CloseHandle(h->mapping);memset(h,0,sizeof(*h));}
 bool awm_hub_publish(AwmHub *h,const uint8_t *p,uint32_t w,uint32_t height,int64_t pts){
     if(!h->view||!awm_frame_shape(w,height)||h->view->stop)return false;
     int slot=1-(int)InterlockedCompareExchange(&h->view->published,0,0);AwmFrameSlot *s=&h->view->slots[slot];
-    InterlockedIncrement(&s->sequence);memcpy(s->pixels,p,(size_t)w*height*4);s->width=w;s->height=height;s->pts_us=pts;s->generation=h->view->generation;s->epoch=h->view->video_epoch;s->frame_number=h->view->video_frames+1;s->heartbeat_ms=GetTickCount64();MemoryBarrier();InterlockedIncrement(&s->sequence);
-    InterlockedExchange(&h->view->published,slot);InterlockedExchange(&h->view->live,1);h->view->heartbeat_ms=s->heartbeat_ms;h->view->session_heartbeat_ms=s->heartbeat_ms;InterlockedIncrement64((volatile LONG64 *)&h->view->video_frames);if(h->ready)SetEvent(h->ready);return true;
+    uint64_t tick=GetTickCount64(),next_frame=h->view->video_frames+1;
+    InterlockedIncrement(&s->sequence);memcpy(s->pixels,p,(size_t)w*height*4);s->width=w;s->height=height;s->pts_us=pts;s->generation=h->view->generation;s->epoch=h->view->video_epoch;s->frame_number=next_frame;s->heartbeat_ms=tick;MemoryBarrier();InterlockedIncrement(&s->sequence);
+    *(volatile uint64_t *)&h->view->heartbeat_ms=tick;*(volatile uint64_t *)&h->view->session_heartbeat_ms=tick;
+    InterlockedIncrement64((volatile LONG64 *)&h->view->video_frames);
+    InterlockedExchange(&h->view->published,slot);InterlockedExchange(&h->view->live,1);if(h->ready)SetEvent(h->ready);return true;
 }
 bool awm_hub_copy_frame(AwmHub *h,uint8_t *p,size_t cap,AwmFrameInfo *info){
     if(!awm_hub_live(h,GetTickCount64()))return false;
     for(int tries=0;tries<3;tries++){
         int index=(int)InterlockedCompareExchange(&h->view->published,0,0);if(index<0||index>1)return false;AwmFrameSlot *s=&h->view->slots[index];LONG seq=InterlockedCompareExchange(&s->sequence,0,0);
         if(seq&1)continue;uint32_t sw=s->width,sh=s->height;uint64_t tick=s->heartbeat_ms;
-        if(!awm_frame_shape(sw,sh)||cap<(size_t)sw*sh*4||(h->view->source_kind!=1&&GetTickCount64()-tick>1000)||s->epoch!=h->view->video_epoch)return false;
+        if(!awm_frame_shape(sw,sh)||cap<(size_t)sw*sh*4||(h->view->source_kind!=1&&age_ms(GetTickCount64(),tick)>1000)||s->epoch!=h->view->video_epoch)return false;
         AwmFrameInfo copied={sw,sh,s->epoch,s->frame_number,tick,s->pts_us};memcpy(p,s->pixels,(size_t)sw*sh*4);MemoryBarrier();
         if(seq==InterlockedCompareExchange(&s->sequence,0,0)&&s->epoch==h->view->video_epoch&&awm_hub_live(h,GetTickCount64())){*info=copied;return true;}
     }return false;
 }
 bool awm_hub_copy(AwmHub *h,uint8_t *p,size_t cap,uint32_t *w,uint32_t *height,int64_t *pts){AwmFrameInfo info;if(!awm_hub_copy_frame(h,p,cap,&info))return false;*w=info.width;*height=info.height;if(pts)*pts=info.pts_us;return true;}
-void awm_hub_stop(AwmHub *h){if(h->view){InterlockedExchange(&h->view->live,0);InterlockedExchange(&h->view->microphone_live,0);h->view->microphone_peak=0;InterlockedExchange(&h->view->stop,1);if(h->ready)SetEvent(h->ready);}}
-bool awm_pipe_io(HANDLE pipe,void *data,DWORD bytes,bool write,HANDLE cancel,DWORD timeout){
+void awm_hub_stop(AwmHub *h){if(h->view){InterlockedExchange(&h->view->live,0);InterlockedExchange(&h->view->microphone_live,0);h->view->microphone_peak=0;InterlockedExchange(&h->view->stop,1);if(h->stop_event)SetEvent(h->stop_event);if(h->ready)SetEvent(h->ready);}}
+bool awm_pipe_io_ev(HANDLE pipe,void *data,DWORD bytes,bool write,HANDLE cancel,DWORD timeout,HANDLE io_event){
     BYTE *p=data;ULONGLONG deadline=GetTickCount64()+timeout;
-    while(bytes){OVERLAPPED o={0};o.hEvent=CreateEventW(NULL,TRUE,FALSE,NULL);if(!o.hEvent)return false;DWORD n=0;BOOL ok=write?WriteFile(pipe,p,bytes,&n,&o):ReadFile(pipe,p,bytes,&n,&o);
-        if(!ok&&GetLastError()==ERROR_IO_PENDING){HANDLE waits[2]={o.hEvent,cancel};ULONGLONG now=GetTickCount64();DWORD wait=WaitForMultipleObjects(cancel?2:1,waits,FALSE,(DWORD)(deadline>now?deadline-now:0));
+    HANDLE ev=io_event;bool owned=false;
+    if(!ev){ev=CreateEventW(NULL,TRUE,FALSE,NULL);if(!ev)return false;owned=true;}
+    bool result=true;
+    while(bytes){
+        if(cancel&&WaitForSingleObject(cancel,0)==WAIT_OBJECT_0){SetLastError(ERROR_CANCELLED);result=false;break;}
+        ResetEvent(ev);OVERLAPPED o={0};o.hEvent=ev;DWORD n=0;BOOL ok=write?WriteFile(pipe,p,bytes,&n,&o):ReadFile(pipe,p,bytes,&n,&o);
+        if(!ok&&GetLastError()==ERROR_IO_PENDING){HANDLE waits[2]={ev,cancel};ULONGLONG now=GetTickCount64();DWORD wait=WaitForMultipleObjects(cancel?2:1,waits,FALSE,(DWORD)(deadline>now?deadline-now:0));
             if(wait==WAIT_OBJECT_0)ok=GetOverlappedResult(pipe,&o,&n,FALSE);else{CancelIoEx(pipe,&o);GetOverlappedResult(pipe,&o,&n,TRUE);ok=FALSE;SetLastError(wait==WAIT_TIMEOUT?ERROR_TIMEOUT:ERROR_CANCELLED);}}
-        CloseHandle(o.hEvent);if(!ok||!n)return false;p+=n;bytes-=n;
-    }return true;
+        if(!ok||!n){result=false;break;}p+=n;bytes-=n;
+    }
+    if(owned)CloseHandle(ev);return result;
 }
+bool awm_pipe_io(HANDLE pipe,void *data,DWORD bytes,bool write,HANDLE cancel,DWORD timeout){return awm_pipe_io_ev(pipe,data,bytes,write,cancel,timeout,NULL);}
 void awm_scale_bgra(const uint8_t *s,uint32_t sw,uint32_t sh,uint8_t *d,uint32_t dw,uint32_t dh){
     if(sw==dw&&sh==dh){memcpy(d,s,(size_t)dw*dh*4);return;}
     memset(d,0,(size_t)dw*dh*4);uint32_t rw=dw,rh=(uint32_t)((uint64_t)sh*dw/sw);if(rh>dh){rh=dh;rw=(uint32_t)((uint64_t)sw*dh/sh);}
@@ -75,8 +94,21 @@ void awm_scale_bgra(const uint8_t *s,uint32_t sw,uint32_t sh,uint8_t *d,uint32_t
 }
 static uint8_t clamp(int x){return (uint8_t)(x<0?0:x>255?255:x);}
 void awm_bgra_to_nv12(const uint8_t *p,uint32_t w,uint32_t h,uint8_t *d){
-    uint8_t *uv=d+(size_t)w*h;
-    for(uint32_t y=0;y<h;y++)for(uint32_t x=0;x<w;x++){const uint8_t *q=p+((size_t)y*w+x)*4;d[(size_t)y*w+x]=clamp(((47*q[2]+157*q[1]+16*q[0]+128)>>8)+16);}
-    for(uint32_t y=0;y<h;y+=2)for(uint32_t x=0;x<w;x+=2){int b=0,g=0,r=0;for(uint32_t j=0;j<2;j++)for(uint32_t i=0;i<2;i++){const uint8_t *q=p+((size_t)(y+j)*w+x+i)*4;b+=q[0];g+=q[1];r+=q[2];}
-        b/=4;g/=4;r/=4;uv[(size_t)(y/2)*w+x]=clamp(((-26*r-87*g+112*b+128)>>8)+128);uv[(size_t)(y/2)*w+x+1]=clamp(((112*r-102*g-10*b+128)>>8)+128);}
+    uint8_t *uv=d+(size_t)w*h;size_t row_bytes=(size_t)w*4;
+    for(uint32_t y=0;y<h;y+=2){
+        const uint8_t *r0=p+(size_t)y*row_bytes,*r1=r0+row_bytes;
+        uint8_t *y0=d+(size_t)y*w,*y1=y0+w,*uv_row=uv+(size_t)(y>>1)*w;
+        for(uint32_t x=0;x<w;x+=2){
+            const uint8_t *q00=r0+(size_t)x*4,*q01=q00+4,*q10=r1+(size_t)x*4,*q11=q10+4;
+            y0[x]=clamp(((47*q00[2]+157*q00[1]+16*q00[0]+128)>>8)+16);
+            y0[x+1]=clamp(((47*q01[2]+157*q01[1]+16*q01[0]+128)>>8)+16);
+            y1[x]=clamp(((47*q10[2]+157*q10[1]+16*q10[0]+128)>>8)+16);
+            y1[x+1]=clamp(((47*q11[2]+157*q11[1]+16*q11[0]+128)>>8)+16);
+            int b=(q00[0]+q01[0]+q10[0]+q11[0])>>2;
+            int g=(q00[1]+q01[1]+q10[1]+q11[1])>>2;
+            int r=(q00[2]+q01[2]+q10[2]+q11[2])>>2;
+            uv_row[x]=clamp(((-26*r-87*g+112*b+128)>>8)+128);
+            uv_row[x+1]=clamp(((112*r-102*g-10*b+128)>>8)+128);
+        }
+    }
 }

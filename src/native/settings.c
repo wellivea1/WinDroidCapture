@@ -29,7 +29,7 @@ bool native_settings_load(NativeSettings *s,const wchar_t *path){
     if(ok){
         NativeSettings *v=(void *)out.pbData;bool v2=out.cbData==offsetof(NativeSettings,preview_scaler),v3=out.cbData==offsetof(NativeSettings,output_width),v4=out.cbData==offsetof(NativeSettings,ui_theme),v5=out.cbData==AWM_SETTINGS_V5_BYTES,v6=out.cbData==sizeof(*s);
         ok=(v2||v3||v4||v5||v6)&&v->version==(v2?2u:v3?3u:v4?4u:v5?5u:6u)&&v->magic==0x324D5741&&v->profile_count>=0&&v->profile_count<=AWM_PROFILES;
-        if(ok&&!v2)ok=v->preview_scaler<=2&&v->pipeline_scaler<=2;
+        if(ok&&!v2)ok=v->preview_scaler<=3&&v->pipeline_scaler<=3;
         if(ok&&(v4||v5||v6)){
             ok=v->capture_count>=0&&v->capture_count<=AWM_PROFILES&&((v->output_width==1280&&v->output_height==720&&v->output_fps==30)||(v->output_width==1920&&v->output_height==1080&&(v->output_fps==30||v->output_fps==60))||(v->output_width==3840&&v->output_height==2160&&v->output_fps==30));
             for(int i=0;ok&&i<v->capture_count;i++)ok=(v->captures[i].last_kind==CAPTURE_CAMERA||v->captures[i].last_kind==CAPTURE_SCREEN)&&v->captures[i].camera.kind==CAPTURE_CAMERA&&v->captures[i].screen.kind==CAPTURE_SCREEN&&v->captures[i].camera.framing>=FRAME_FIT&&v->captures[i].camera.framing<=FRAME_FILL&&v->captures[i].screen.framing>=FRAME_FIT&&v->captures[i].screen.framing<=FRAME_FILL;

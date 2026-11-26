@@ -32,6 +32,9 @@ $taskServer=Join-Path $taskRoot 'build-native\scrcpy-server-awm'
 if($LASTEXITCODE){throw 'Server DEX packaging failed'}
 $taskManifest=Get-Content -LiteralPath (Join-Path $taskBuild 'server-source-manifest.json') -Raw | ConvertFrom-Json
 $taskManifest | Add-Member -NotePropertyName sha256 -NotePropertyValue (Get-FileHash -LiteralPath $taskServer -Algorithm SHA256).Hash.ToLowerInvariant()
-$taskManifest | Add-Member -NotePropertyName java -NotePropertyValue ((& (Join-Path $Jdk 'bin\java.exe') -version 2>&1) -join ' ')
+$taskPrevEap=$ErrorActionPreference;$ErrorActionPreference='Continue'
+$taskJavaVersion=((& (Join-Path $Jdk 'bin\java.exe') -version 2>&1) | ForEach-Object { $_.ToString() }) -join ' '
+$ErrorActionPreference=$taskPrevEap
+$taskManifest | Add-Member -NotePropertyName java -NotePropertyValue $taskJavaVersion
 $taskManifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $taskRoot 'build-native\awm-camera-server.json') -Encoding UTF8
 Write-Output "Built separate AWM camera API 1 server: $taskServer"

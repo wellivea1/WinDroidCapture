@@ -5,7 +5,7 @@
 #include "protocol.h"
 /* Advisory coalesced wakeup for the single integrated preview consumer. Camera
    consumers still pull independently. No change to the shared frame/pipe ABI. */
-typedef struct AwmHub { HANDLE mapping; AwmFrameHub *view; HANDLE ready; } AwmHub;
+typedef struct AwmHub { HANDLE mapping; AwmFrameHub *view; HANDLE ready; HANDLE stop_event; } AwmHub;
 typedef struct AwmFrameInfo {uint32_t width,height,epoch;uint64_t number,heartbeat_ms;int64_t pts_us;} AwmFrameInfo;
 bool awm_hub_open(AwmHub *hub,bool create);
 bool awm_hub_open_named(AwmHub *hub,bool create,const wchar_t *name);
@@ -19,6 +19,7 @@ void awm_hub_stop(AwmHub *hub);
 bool awm_frame_shape(uint32_t width,uint32_t height);
 bool awm_packet_valid(const AwmPacketHeader *header);
 bool awm_pipe_io(HANDLE pipe,void *data,DWORD bytes,bool write,HANDLE cancel,DWORD timeout_ms);
+bool awm_pipe_io_ev(HANDLE pipe,void *data,DWORD bytes,bool write,HANDLE cancel,DWORD timeout_ms,HANDLE io_event);
 bool awm_user_security(SECURITY_ATTRIBUTES *attributes,PSECURITY_DESCRIPTOR *descriptor,bool frameserver);
 void awm_scale_bgra(const uint8_t *src,uint32_t sw,uint32_t sh,uint8_t *dst,uint32_t dw,uint32_t dh);
 void awm_bgra_to_nv12(const uint8_t *src,uint32_t width,uint32_t height,uint8_t *dst);

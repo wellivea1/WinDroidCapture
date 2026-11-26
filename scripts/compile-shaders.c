@@ -14,6 +14,6 @@ static HRESULT emit(FILE *file,const char *source,SIZE_T length,const char *entr
 int wmain(int argc,wchar_t **argv){
     if(argc!=2)return 2;FILE *file=NULL;if(_wfopen_s(&file,argv[1],L"wb")||!file)return 3;
     fputs("/* Generated from scale_shader.h and color_shader.h; edit HLSL, not this file. */\n",file);
-    HRESULT hr=emit(file,awm_scale_shader,sizeof(awm_scale_shader),"vs","vs_4_0","awm_vertex_bytecode");if(SUCCEEDED(hr))hr=emit(file,awm_scale_shader,sizeof(awm_scale_shader),"ps","ps_4_0","awm_pixel_bytecode");if(SUCCEEDED(hr))hr=emit(file,awm_color_shader,sizeof(awm_color_shader),"convert","ps_4_0","awm_color_bytecode");
+    HRESULT hr=emit(file,awm_scale_shader,sizeof(awm_scale_shader),"vs","vs_4_0","awm_vertex_bytecode");if(SUCCEEDED(hr))hr=emit(file,awm_scale_shader,sizeof(awm_scale_shader),"ps","ps_4_0","awm_pixel_bytecode");if(SUCCEEDED(hr))hr=emit(file,awm_color_shader,sizeof(awm_color_shader),"convert","ps_4_0","awm_color_bytecode");if(SUCCEEDED(hr))hr=emit(file,awm_nv12_shader,sizeof(awm_nv12_shader),"bgra_to_y","ps_4_0","awm_nv12_y_bytecode");if(SUCCEEDED(hr))hr=emit(file,awm_nv12_shader,sizeof(awm_nv12_shader),"bgra_to_uv","ps_4_0","awm_nv12_uv_bytecode");
     int error=ferror(file);fclose(file);if(FAILED(hr)||error){DeleteFileW(argv[1]);return 4;}return 0;
 }
