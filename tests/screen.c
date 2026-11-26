@@ -71,6 +71,9 @@ int main(void){
     /* Concurrent producer heartbeat ahead of consumer clock sample must not underflow. */
     writer.view->session_heartbeat_ms=now+25;writer.view->slots[slot].heartbeat_ms=now+25;writer.view->source_kind=CAPTURE_CAMERA;
     CHECK(awm_hub_live(&reader,now));
+    /* Camera slot heartbeat tolerates brief 1.5s pauses without false disconnect, expires past 2.5s. */
+    writer.view->session_heartbeat_ms=now;writer.view->slots[slot].heartbeat_ms=now-1500;CHECK(awm_hub_live(&reader,now));
+    writer.view->slots[slot].heartbeat_ms=now-2600;CHECK(!awm_hub_live(&reader,now));
     writer.view->slots[slot].heartbeat_ms=now-61000;CHECK(!awm_hub_live(&reader,now));writer.view->source_kind=CAPTURE_SCREEN;writer.view->session_heartbeat_ms=now-3001;CHECK(!awm_hub_live(&reader,now));
     /* Verify single-pass 2x2 awm_bgra_to_nv12 matches reference math bit-for-bit. */
     BYTE bgra[16*16*4],nv12[16*16*3/2];for(unsigned i=0;i<16*16;i++){bgra[i*4]=(BYTE)((i*37)&255);bgra[i*4+1]=(BYTE)((i*73)&255);bgra[i*4+2]=(BYTE)((i*113)&255);bgra[i*4+3]=255;}

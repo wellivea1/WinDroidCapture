@@ -36,7 +36,7 @@ static bool target(NativePreview *p){ID3D11Texture2D *back=NULL;HRESULT hr=IDXGI
 static HRESULT create_swap(NativePreview *p){
     IDXGIDevice *dxgi=NULL;IDXGIAdapter *adapter=NULL;IDXGIFactory2 *factory=NULL;IDXGISwapChain1 *swap=NULL;IDXGISwapChain2 *swap2=NULL;
     HRESULT hr=ID3D11Device_QueryInterface(p->device,&IID_IDXGIDevice,(void **)&dxgi);if(SUCCEEDED(hr))hr=IDXGIDevice_GetAdapter(dxgi,&adapter);if(SUCCEEDED(hr))hr=IDXGIAdapter_GetParent(adapter,&IID_IDXGIFactory2,(void **)&factory);
-    DXGI_SWAP_CHAIN_DESC1 d={0};d.Width=p->cw;d.Height=p->ch;d.Format=DXGI_FORMAT_B8G8R8A8_UNORM;d.SampleDesc.Count=1;d.BufferUsage=DXGI_USAGE_RENDER_TARGET_OUTPUT;d.BufferCount=2;d.SwapEffect=DXGI_SWAP_EFFECT_FLIP_DISCARD;d.Flags=DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
+    DXGI_SWAP_CHAIN_DESC1 d={0};d.Width=p->cw;d.Height=p->ch;d.Format=DXGI_FORMAT_B8G8R8A8_UNORM;d.SampleDesc.Count=1;d.BufferUsage=DXGI_USAGE_RENDER_TARGET_OUTPUT;d.BufferCount=3;d.SwapEffect=DXGI_SWAP_EFFECT_FLIP_DISCARD;d.Flags=DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
     if(SUCCEEDED(hr))hr=IDXGIFactory2_CreateSwapChainForHwnd(factory,(IUnknown *)p->device,p->window,&d,NULL,NULL,&swap);
     if(SUCCEEDED(hr))hr=IDXGISwapChain1_QueryInterface(swap,&IID_IDXGISwapChain,(void **)&p->swap);if(SUCCEEDED(hr))hr=IDXGISwapChain1_QueryInterface(swap,&IID_IDXGISwapChain2,(void **)&swap2);
     if(SUCCEEDED(hr))hr=IDXGISwapChain2_SetMaximumFrameLatency(swap2,1);if(SUCCEEDED(hr)){p->latency=IDXGISwapChain2_GetFrameLatencyWaitableObject(swap2);if(!p->latency)hr=E_FAIL;}
@@ -84,7 +84,7 @@ static bool upload_bgra(NativePreview *p,const uint8_t *pixels,uint32_t w,uint32
 }
 bool native_preview_frame(NativePreview *p,const uint8_t *pixels,uint32_t w,uint32_t h){
     if(!p||!pixels||!w||!h||!native_preview_wait(p,NULL,500))return false;RECT r={0,0,(LONG)p->cw,(LONG)p->ch};if(p->window)GetClientRect(p->window,&r);if(!r.right||!r.bottom)return true;
-    if(p->cw!=(UINT)r.right||p->ch!=(UINT)r.bottom||!p->target){ID3D11DeviceContext_OMSetRenderTargets(p->context,0,NULL,NULL);DROP(p->target);p->cw=0;p->ch=0;if(FAILED(IDXGISwapChain_ResizeBuffers(p->swap,2,(UINT)r.right,(UINT)r.bottom,DXGI_FORMAT_UNKNOWN,p->swap_flags))||!target(p))return false;p->cw=(UINT)r.right;p->ch=(UINT)r.bottom;}
+    if(p->cw!=(UINT)r.right||p->ch!=(UINT)r.bottom||!p->target){ID3D11DeviceContext_OMSetRenderTargets(p->context,0,NULL,NULL);DROP(p->target);p->cw=0;p->ch=0;if(FAILED(IDXGISwapChain_ResizeBuffers(p->swap,3,(UINT)r.right,(UINT)r.bottom,DXGI_FORMAT_UNKNOWN,p->swap_flags))||!target(p))return false;p->cw=(UINT)r.right;p->ch=(UINT)r.bottom;}
     if(!upload_bgra(p,pixels,w,h))return false;
     float bg[]={0,0,0,1};ID3D11DeviceContext_ClearRenderTargetView(p->context,p->target,bg);
     AwmComposition framing;if(!awm_composition_zoom(w,h,p->cw,p->ch,p->framing,p->zoom,p->pan_x,p->pan_y,&framing))return false;UINT vw=framing.width,vh=framing.height;

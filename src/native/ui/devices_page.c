@@ -14,8 +14,8 @@ void devices_page_create(AppUI *a){
     ui_control(a,p,L"STATIC",L"Wireless debugging: pairing and connection ports can differ. Discovered mDNS endpoints populate automatically while this tab is open. Codes are never saved.",0,UI_WIRELESS_INFO);
 }
 void devices_page_layout(AppUI *a,int w,int h){
-    ui_move(a,a->controls[UI_DEVICE_LIST],0,0,w,h-264);ui_move(a,a->controls[UI_REFRESH],0,h-254,92,28);ui_move(a,a->controls[UI_INSPECT],104,h-254,164,28);ui_move(a,a->controls[UI_USB],280,h-254,110,28);
-    ui_move(a,a->controls[UI_DEVICE_TITLE],0,h-216,w,20);ui_move(a,a->controls[UI_DEVICE_DETAIL],0,h-194,w,32);ui_move(a,a->controls[UI_WIRELESS_TITLE],0,h-155,w,20);int pair=w/3;ui_field_layout(a,UI_PAIR_ADDRESS,0,h-131,pair-12);ui_field_layout(a,UI_PAIR_CODE,pair,h-131,150);ui_field_layout(a,UI_CONNECT_ADDRESS,pair+170,h-131,w-pair-170);
+    ui_move(a,a->controls[UI_DEVICE_LIST],0,0,w,h-282);ui_move(a,a->controls[UI_REFRESH],0,h-272,92,28);ui_move(a,a->controls[UI_INSPECT],104,h-272,164,28);ui_move(a,a->controls[UI_USB],280,h-272,110,28);
+    ui_move(a,a->controls[UI_DEVICE_TITLE],0,h-234,w,20);ui_move(a,a->controls[UI_DEVICE_DETAIL],0,h-212,w,42);ui_move(a,a->controls[UI_WIRELESS_TITLE],0,h-155,w,20);int pair=w/3;ui_field_layout(a,UI_PAIR_ADDRESS,0,h-131,pair-12);ui_field_layout(a,UI_PAIR_CODE,pair,h-131,150);ui_field_layout(a,UI_CONNECT_ADDRESS,pair+170,h-131,w-pair-170);
     ui_move(a,a->controls[UI_PAIR],0,h-78,84,28);ui_move(a,a->controls[UI_CONNECT],92,h-78,88,28);ui_move(a,a->controls[UI_DISCONNECT],188,h-78,120,28);ui_move(a,a->controls[UI_MDNS],316,h-78,148,28);
     int list_x=476,btn_w=92,list_w=w-list_x-btn_w-8;if(list_w<140)list_w=140;
     ui_move(a,a->controls[UI_MDNS_LIST],list_x,h-78,list_w,200);ui_move(a,a->controls[UI_MDNS_USE],w-btn_w,h-78,btn_w,28);

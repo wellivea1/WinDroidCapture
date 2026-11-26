@@ -2,17 +2,18 @@
  * This managed client accepts only awm-pipe: targets and never records files. */
 #include "recorder.h"
 #include <windows.h>
+#include <avrt.h>
 #include <stdlib.h>
 #include <string.h>
 #include "util/log.h"
 #include "util/tick.h"
 #include "native/protocol.h"
-#define AWM_COALESCE_MAX 65536u
-typedef struct Exporter {HANDLE pipe,write_event;uint32_t sequence;bool failed;BYTE *batch;} Exporter;
+#define AWM_COALESCE_MAX 262144u
+typedef struct Exporter {HANDLE pipe,write_event,video_mmcss;uint32_t sequence;bool failed;sc_tick last_send_tick;BYTE *batch;} Exporter;
 static Exporter *exporter(struct sc_recorder *r){return (Exporter *)r->ctx;}
 static bool send_bytes(Exporter *e,const void *data,DWORD bytes){
     const BYTE *p=data;while(bytes){ResetEvent(e->write_event);OVERLAPPED o={0};o.hEvent=e->write_event;DWORD n=0;BOOL ok=WriteFile(e->pipe,p,bytes,&n,&o);
-        if(!ok&&GetLastError()==ERROR_IO_PENDING){DWORD wait=WaitForSingleObject(e->write_event,1000);if(wait==WAIT_OBJECT_0)ok=GetOverlappedResult(e->pipe,&o,&n,FALSE);else{CancelIoEx(e->pipe,&o);GetOverlappedResult(e->pipe,&o,&n,TRUE);ok=FALSE;}}
+        if(!ok&&GetLastError()==ERROR_IO_PENDING){DWORD wait=WaitForSingleObject(e->write_event,5000);if(wait==WAIT_OBJECT_0)ok=GetOverlappedResult(e->pipe,&o,&n,FALSE);else{CancelIoEx(e->pipe,&o);GetOverlappedResult(e->pipe,&o,&n,TRUE);ok=FALSE;}}
         if(!ok||!n)return false;p+=n;bytes-=n;}return true;
 }
 static bool send_locked(struct sc_recorder *r,AwmPacketHeader *h,const void *data){
@@ -21,11 +22,13 @@ static bool send_locked(struct sc_recorder *r,AwmPacketHeader *h,const void *dat
     bool ok;
     if(e->batch&&h->size<=AWM_COALESCE_MAX){memcpy(e->batch,h,sizeof(*h));if(h->size)memcpy(e->batch+sizeof(*h),data,h->size);ok=send_bytes(e,e->batch,(DWORD)(sizeof(*h)+h->size));}
     else ok=send_bytes(e,h,sizeof(*h))&&(!h->size||send_bytes(e,data,h->size));
-    if(!ok){e->failed=true;r->stopped=true;sc_cond_signal(&r->cond);}return ok;
+    if(ok)e->last_send_tick=sc_tick_now();
+    else{e->failed=true;r->stopped=true;sc_cond_signal(&r->cond);}return ok;
 }
 static struct sc_recorder *from_sink(struct sc_packet_sink *s,bool audio){return (struct sc_recorder *)((char *)s-(audio?offsetof(struct sc_recorder,audio_packet_sink):offsetof(struct sc_recorder,video_packet_sink)));}
 static bool open_sink(struct sc_packet_sink *s,const AVCodecParameters *p,const struct sc_stream_session *session,bool audio){
     struct sc_recorder *r=from_sink(s,audio);AwmPacketHeader h={0};h.type=AWM_MSG_OPEN;h.stream=audio?1:0;h.codec=(uint32_t)p->codec_id;h.width=!audio&&session?session->video.width:(uint32_t)p->width;h.height=!audio&&session?session->video.height:(uint32_t)p->height;h.sample_rate=(uint32_t)p->sample_rate;h.channels=(uint32_t)p->ch_layout.nb_channels;h.size=(uint32_t)p->extradata_size;
+    if(!audio){DWORD task=0;exporter(r)->video_mmcss=AvSetMmThreadCharacteristicsW(L"Capture",&task);}
     sc_mutex_lock(&r->mutex);bool ok=h.size<=AWM_PACKET_MAX&&send_locked(r,&h,p->extradata);sc_mutex_unlock(&r->mutex);return ok;
 }
 static bool video_open(struct sc_packet_sink *s,const AVCodecParameters *p,const struct sc_stream_session *v){return open_sink(s,p,v,false);}
@@ -40,11 +43,27 @@ static enum sc_sink_result video_session(struct sc_packet_sink *s,const struct s
     struct sc_recorder *r=from_sink(s,false);AwmPacketHeader h={0};h.type=AWM_MSG_SESSION;h.width=v->video.width;h.height=v->video.height;h.flags=v->video.client_resized?1:0;
     sc_mutex_lock(&r->mutex);bool ok=send_locked(r,&h,NULL);sc_mutex_unlock(&r->mutex);return ok?SC_SINK_OK:SC_SINK_KO;
 }
-static void close_sink(struct sc_packet_sink *s,bool audio){struct sc_recorder *r=from_sink(s,audio);AwmPacketHeader h={0};h.type=AWM_MSG_CLOSE;h.stream=audio?1:0;sc_mutex_lock(&r->mutex);send_locked(r,&h,NULL);r->stopped=true;sc_cond_signal(&r->cond);sc_mutex_unlock(&r->mutex);}
+static void close_sink(struct sc_packet_sink *s,bool audio){
+    struct sc_recorder *r=from_sink(s,audio);AwmPacketHeader h={0};h.type=AWM_MSG_CLOSE;h.stream=audio?1:0;
+    sc_mutex_lock(&r->mutex);send_locked(r,&h,NULL);r->stopped=true;sc_cond_signal(&r->cond);sc_mutex_unlock(&r->mutex);
+    if(!audio&&exporter(r)->video_mmcss){AvRevertMmThreadCharacteristics(exporter(r)->video_mmcss);exporter(r)->video_mmcss=NULL;}
+}
 static void video_close(struct sc_packet_sink *s){close_sink(s,false);}
 static void audio_close(struct sc_packet_sink *s){close_sink(s,true);}
 static void audio_disable(struct sc_packet_sink *s){struct sc_recorder *r=from_sink(s,true);AwmPacketHeader h={0};h.type=AWM_MSG_DISABLED;h.stream=1;sc_mutex_lock(&r->mutex);send_locked(r,&h,NULL);sc_mutex_unlock(&r->mutex);}
-static int monitor(void *ptr){struct sc_recorder *r=ptr;sc_mutex_lock(&r->mutex);while(!r->stopped){sc_cond_timedwait(&r->cond,&r->mutex,sc_tick_now()+SC_TICK_FROM_MS(500));if(!r->stopped){AwmPacketHeader h={0};h.type=AWM_MSG_HEARTBEAT;send_locked(r,&h,NULL);}}bool ok=!exporter(r)->failed;sc_mutex_unlock(&r->mutex);r->cbs->on_ended(r,ok,r->cbs_userdata);return 0;}
+static int monitor(void *ptr){
+    struct sc_recorder *r=ptr;Exporter *e=exporter(r);
+    sc_mutex_lock(&r->mutex);
+    while(!r->stopped){
+        sc_cond_timedwait(&r->cond,&r->mutex,sc_tick_now()+SC_TICK_FROM_MS(250));
+        /* Only emit heartbeats when no media packet has been sent recently,
+           avoiding mutex contention and extra pipe wakeups during active video. */
+        if(!r->stopped&&sc_tick_now()-e->last_send_tick>=SC_TICK_FROM_MS(250)){
+            AwmPacketHeader h={0};h.type=AWM_MSG_HEARTBEAT;send_locked(r,&h,NULL);
+        }
+    }
+    bool ok=!e->failed;sc_mutex_unlock(&r->mutex);r->cbs->on_ended(r,ok,r->cbs_userdata);return 0;
+}
 bool sc_recorder_init(struct sc_recorder *r,const char *name,enum sc_record_format format,bool video,bool audio,enum sc_orientation orientation,const struct sc_recorder_callbacks *cbs,void *userdata){
     (void)format;(void)orientation;static const char prefix[]="awm-pipe:\\\\.\\pipe\\AWM.Export.";if(strncmp(name,prefix,sizeof(prefix)-1)){LOGE("AWM bridge only accepts an owned awm-pipe target");return false;}
     memset(r,0,sizeof(*r));r->filename=_strdup(name+9);Exporter *e=calloc(1,sizeof(*e));r->ctx=(AVFormatContext *)(void *)e;if(!r->filename||!e){free(r->filename);free(e);return false;}
@@ -59,6 +78,7 @@ bool sc_recorder_start(struct sc_recorder *r){
     Exporter *e=exporter(r);e->write_event=CreateEventW(NULL,TRUE,FALSE,NULL);e->batch=malloc(sizeof(AwmPacketHeader)+AWM_COALESCE_MAX);
     if(!e->write_event){free(e->batch);e->batch=NULL;return false;}
     e->pipe=CreateFileW(name,GENERIC_WRITE,0,NULL,OPEN_EXISTING,FILE_FLAG_OVERLAPPED,NULL);if(e->pipe==INVALID_HANDLE_VALUE){e->pipe=NULL;LOGE("AWM export pipe unavailable (%lu)",GetLastError());return false;}
+    e->last_send_tick=sc_tick_now();
     LOGI("AWM export protocol 3; ordered heartbeat/session events, no media files or speaker playback");return sc_thread_create(&r->thread,monitor,"AWM export",r);
 }
 void sc_recorder_stop(struct sc_recorder *r){sc_mutex_lock(&r->mutex);r->stopped=true;sc_cond_signal(&r->cond);sc_mutex_unlock(&r->mutex);}

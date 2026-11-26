@@ -5,11 +5,11 @@
 You need **Windows 11 (64-bit)**, an Android phone and a USB cable for the first setup. Keep your phone unlocked while testing.
 
 > [!IMPORTANT]
-> Choose **Audio: Off**. This early release supports video; phone microphone support is not ready yet.
+> **Audio** defaults to **Off** in this early release. Video is supported; phone microphone support requires a signed kernel driver and is still in development.
 
 ## 1. Download the app and connection tools
 
-1. Open the [Windows download page](https://github.com/wellivea1/WinDroidCapture/releases/tag/v0.3.0-dev.1). Download the **WinDroidCapture…zip** file and extract it to a folder.
+1. Open the [Windows download page](https://github.com/wellivea1/WinDroidCapture/releases/tag/v0.3.0-dev.3). Download the **WinDroidCapture…zip** file and extract it to a folder.
 2. Open the [official scrcpy 5.0.1 download page](https://github.com/Genymobile/scrcpy/releases/tag/v5.0.1). Download **scrcpy-win64-v5.0.1.zip** and extract it to a separate folder.
 3. Copy the **`.dll` files** from the scrcpy folder into the folder containing **WinDroidCapture.exe**. These files let the app process video. Keep the original scrcpy folder for the next step.
 
@@ -47,8 +47,8 @@ For a source checkout, the optional `.\scripts\setup-scrcpy.ps1` downloader veri
 
 In **Settings → Output**:
 
-1. Press **Install camera source**. Windows asks for administrator approval to install the camera component; handle that prompt yourself.
-2. Press **Register camera**.
+1. Press **Install camera source**. Windows asks for administrator approval once, installs the camera component, and registers the current user's virtual camera automatically.
+2. You can also press **Register camera** separately if you ever need to re-register the virtual camera without reinstalling.
 
 The camera appears as **Android Webcam Camera (Windows Virtual Camera)**. Later, normal capture does not need administrator privileges. Installing it once does not start phone capture.
 
@@ -88,9 +88,9 @@ On **Capture**:
 
 1. Choose **Phone camera** or **Phone screen**, then the camera/display you want.
 2. Start with **Standard** for the camera, or **Balanced** for the screen.
-3. Set **Audio: Off** and press **Start capture**.
+3. Leave **Audio: Off** (the default) and press **Start capture**.
 
-Keep the phone awake for screen capture. It shows the selected phone display, including any notifications, so use a neutral page when testing. To change device or source, press **Stop** first.
+Keep the phone awake for screen capture. It shows the selected phone display, including any notifications, so use a neutral page when testing. Rotation, mirroring, framing, zoom/pan, and scaling apply live; changing source, camera, or resolution restarts capture automatically. To change the connected device, press **Stop** first.
 
 Pixel 10 Pro XL owners can choose direct rear wide, ultrawide or telephoto cameras. [Camera choices](PIXEL_CAMERAS.md) · [All controls](CONTROLS.md).
 

@@ -90,7 +90,7 @@ static bool video_convert(const AVFrame *f,AwmVideoTiming *timing){
         if(!native_yuv_bgra(&host.converter,&decoded,host.pixels)){fprintf(stderr,"GPU YUV conversion failed; no silent range/quality fallback\n");return false;}
     }
     uint32_t ow=(rot==90||rot==270)?h:w,oh=(rot==90||rot==270)?w:h;
-    timing->convert_end_ms=awm_clock_ms();return awm_video_queue_push(host.video,host.pixels,ow,oh,f->pts,timing);
+    timing->convert_end_ms=awm_clock_ms();return awm_video_queue_push_swap(host.video,&host.pixels,ow,oh,f->pts,timing);
 }
 typedef struct CamShm {HANDLE file,map;BYTE *view;uint32_t pid,id;} CamShm;
 static bool cam_shm_open(CamShm *s,uint32_t unique_id,uint32_t slot){
@@ -120,11 +120,11 @@ static DWORD WINAPI camera_client(void *data){
     CameraClient *c=data;HANDLE pipe=c->pipe;uint32_t slot=c->slot;free(c);
     BYTE *source=malloc(AWM_FRAME_BYTES),*scaled=malloc(AWM_FRAME_BYTES),*nv12=malloc(AWM_MAX_PIXELS*3/2);
     HANDLE io_event=CreateEventW(NULL,TRUE,FALSE,NULL);HANDLE multimedia=awm_multimedia_begin(L"Capture");
-    uint32_t w=0,h=0,last_epoch=0;uint64_t last_frame=0;int64_t pts=0;NativePreview *resampler=NULL;
+    uint32_t w=0,h=0,last_epoch=0;uint64_t last_frame=0;int64_t pts=0;NativePreview *resampler=native_preview_create(NULL);
     bool exact_rgb_cached=false,shm_tried=false,shm_valid=false;unsigned last_scaler=~0u,last_framing=~0u;long last_zoom_milli=-1,last_pan_x_milli=-1,last_pan_y_milli=-1;CamShm shm={0};
     AwmCameraRequest previous={0};LARGE_INTEGER frequency,begin,end;QueryPerformanceFrequency(&frequency);uint64_t count=0;double total_ms=0,max_ms=0;
     if(source&&scaled&&nv12&&io_event)while(WaitForSingleObject(host.cancel,0)!=WAIT_OBJECT_0){
-        AwmCameraRequest q;if(!awm_pipe_io_ev(pipe,&q,sizeof(q),false,host.cancel,3000,io_event))break;
+        AwmCameraRequest q;if(!awm_pipe_io_ev(pipe,&q,sizeof(q),false,host.cancel,5000,io_event))break;
         if(q.magic!=AWM_FRAME_MAGIC||(q.version!=AWM_CAMERA_VERSION&&q.version!=AWM_CAMERA_VERSION_V3)||!awm_frame_shape(q.width,q.height)||(q.format!=1&&q.format!=2))break;
         bool use_v3=q.version==AWM_CAMERA_VERSION_V3;
         if(use_v3&&!shm_tried){shm_tried=true;cam_shm_open(&shm,(uint32_t)InterlockedIncrement(&host.next_client_id),slot);}
@@ -246,13 +246,13 @@ int wmain(int argc,wchar_t **argv){
     OVERLAPPED connection={0};connection.hEvent=CreateEventW(NULL,TRUE,FALSE,NULL);BOOL connected=ConnectNamedPipe(pipe,&connection);DWORD error=GetLastError();
     if(!connected&&error==ERROR_PIPE_CONNECTED)connected=TRUE;
     if(!connected&&error==ERROR_IO_PENDING){HANDLE waits[]={host.cancel,connection.hEvent};if(WaitForMultipleObjects(2,waits,FALSE,15000)==WAIT_OBJECT_0+1){DWORD n;connected=GetOverlappedResult(pipe,&connection,&n,FALSE);}else{CancelIoEx(pipe,&connection);DWORD n;GetOverlappedResult(pipe,&connection,&n,TRUE);}}
-    CloseHandle(connection.hEvent);AVCodecContext *decoder=NULL;AVPacket *packet=av_packet_alloc();AVFrame *frame=av_frame_alloc();BYTE *payload=malloc(AWM_PACKET_MAX+AV_INPUT_BUFFER_PADDING_SIZE);HANDLE pipe_event=CreateEventW(NULL,TRUE,FALSE,NULL);uint32_t audio_channels=0,audio_rate=0,expected_width=0,expected_height=0;bool codec_open=false,await_key=false,failed=!connected;ULONGLONG start=GetTickCount64();uint32_t last_sequence=0;
+    CloseHandle(connection.hEvent);AVCodecContext *decoder=NULL;AVPacket *packet=av_packet_alloc();AVFrame *frame=av_frame_alloc();BYTE *payload=malloc(AWM_PACKET_MAX+AV_INPUT_BUFFER_PADDING_SIZE);HANDLE pipe_event=CreateEventW(NULL,TRUE,FALSE,NULL);uint32_t audio_channels=0,audio_rate=0,expected_width=0,expected_height=0,decode_errors=0;bool codec_open=false,await_key=false,failed=!connected;ULONGLONG start=GetTickCount64();uint32_t last_sequence=0;
     if(!packet||!frame||!payload||!pipe_event)failed=true;
     HANDLE multimedia=awm_multimedia_begin(L"Capture");printf("MMCSS decode scheduling: %s; no global timer/power changes\n",multimedia?"active":"unavailable; normal scheduler");fflush(stdout);
     while(!failed&&WaitForSingleObject(host.cancel,0)!=WAIT_OBJECT_0&&(!duration||GetTickCount64()-start<(ULONGLONG)duration*1000)){
         if(host.hub.view->stop)break;AwmPacketHeader p;
-        if(!awm_pipe_io_ev(pipe,&p,sizeof(p),false,host.cancel,3000,pipe_event)||!awm_packet_valid(&p)||p.sequence!=last_sequence+1){if(host.hub.view->stop||WaitForSingleObject(host.cancel,0)==WAIT_OBJECT_0)break;fprintf(stderr,"Export stopped, timed out, or invalid packet\n");failed=true;break;}last_sequence=p.sequence;
-        if(p.size&&!awm_pipe_io_ev(pipe,payload,p.size,false,host.cancel,3000,pipe_event)){if(host.hub.view->stop||WaitForSingleObject(host.cancel,0)==WAIT_OBJECT_0)break;failed=true;break;}memset(payload+p.size,0,AV_INPUT_BUFFER_PADDING_SIZE);
+        if(!awm_pipe_io_ev(pipe,&p,sizeof(p),false,host.cancel,6000,pipe_event)||!awm_packet_valid(&p)||p.sequence!=last_sequence+1){if(host.hub.view->stop||WaitForSingleObject(host.cancel,0)==WAIT_OBJECT_0)break;fprintf(stderr,"Export stopped, timed out, or invalid packet\n");failed=true;break;}last_sequence=p.sequence;
+        if(p.size&&!awm_pipe_io_ev(pipe,payload,p.size,false,host.cancel,6000,pipe_event)){if(host.hub.view->stop||WaitForSingleObject(host.cancel,0)==WAIT_OBJECT_0)break;failed=true;break;}memset(payload+p.size,0,AV_INPUT_BUFFER_PADDING_SIZE);
         *(volatile uint64_t *)&host.hub.view->session_heartbeat_ms=GetTickCount64();
         if(p.type==AWM_MSG_HEARTBEAT)continue;
         if(p.type==AWM_MSG_SESSION){if(!decoder){failed=true;break;}expected_width=p.width;expected_height=p.height;awm_video_queue_reconfigure(host.video);if(codec_open)avcodec_flush_buffers(decoder);decoder->width=(int)p.width;decoder->height=(int)p.height;await_key=true;printf("VIDEO SESSION: epoch=%u shape=%ux%u client_resized=%u\n",host.hub.view->video_epoch,p.width,p.height,p.flags);fflush(stdout);continue;}
@@ -272,10 +272,20 @@ int wmain(int argc,wchar_t **argv){
         if(host.packets)fprintf(host.packets,"%016llx,%.6f,%.6f\n",(unsigned long long)host.trace_session,arrived,source_gap);
         av_packet_unref(packet);if(av_new_packet(packet,(int)p.size)<0){failed=true;break;}memcpy(packet->data,payload,p.size);packet->pts=p.pts_us;packet->dts=p.pts_us;packet->flags=(int)(p.flags&0xffff);double decode_at=awm_clock_ms();
         packet->opaque_ref=av_buffer_alloc(sizeof(PacketTiming));if(!packet->opaque_ref){failed=true;break;}PacketTiming stamp={arrived,decode_at,source_gap};memcpy(packet->opaque_ref->data,&stamp,sizeof(stamp));
-        if(avcodec_send_packet(decoder,packet)<0){failed=true;break;}
+        int send_rc=avcodec_send_packet(decoder,packet);
+        if(send_rc==AVERROR(EAGAIN)){while(avcodec_receive_frame(decoder,frame)==0)av_frame_unref(frame);send_rc=avcodec_send_packet(decoder,packet);}
+        if(send_rc<0){
+            if(send_rc==AVERROR_INVALIDDATA&&++decode_errors<16){avcodec_flush_buffers(decoder);await_key=true;fprintf(stderr,"Transient corrupt video packet; resyncing on next keyframe (%u/16)\n",decode_errors);continue;}
+            failed=true;break;
+        }
         while(avcodec_receive_frame(decoder,frame)==0){
             double conversion_at=awm_clock_ms();awm_timing_add(&host.decode,conversion_at-decode_at);
-            if((uint32_t)frame->width!=expected_width||(uint32_t)frame->height!=expected_height){fprintf(stderr,"Decoded size differs from declared session; refusing a mislabeled frame\n");failed=true;break;}
+            if((uint32_t)frame->width!=expected_width||(uint32_t)frame->height!=expected_height){
+                av_frame_unref(frame);
+                if(++decode_errors<8){avcodec_flush_buffers(decoder);await_key=true;fprintf(stderr,"Transient session-size mismatch; waiting for matching keyframe (%u/8)\n",decode_errors);break;}
+                fprintf(stderr,"Decoded size differs from declared session; refusing a mislabeled frame\n");failed=true;break;
+            }
+            decode_errors=0;
             PacketTiming stamp={NAN,NAN,NAN};if(frame->opaque_ref&&frame->opaque_ref->size==sizeof(stamp))memcpy(&stamp,frame->opaque_ref->data,sizeof(stamp));
             AwmVideoTiming timing={stamp.arrival_ms,stamp.decode_start_ms,conversion_at,NAN,stamp.source_gap_ms};
             if(!video_convert(frame,&timing)){failed=true;break;}awm_timing_add(&host.convert,awm_clock_ms()-conversion_at);decode_at=awm_clock_ms();av_frame_unref(frame);

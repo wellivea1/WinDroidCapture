@@ -8,6 +8,8 @@ typedef struct AwmVideoQueueStats {uint64_t published,dropped,late;double delay_
    QPC, adding one requested frame interval with at most two pending images. */
 AwmVideoQueue *awm_video_queue_create(AwmHub *hub,unsigned fps,bool smooth,uint64_t session);
 bool awm_video_queue_push(AwmVideoQueue *q,const BYTE *pixels,uint32_t width,uint32_t height,int64_t pts,const AwmVideoTiming *timing);
+/* Zero-copy push for Smooth mode: swaps caller's AWM_FRAME_BYTES buffer in O(1). */
+bool awm_video_queue_push_swap(AwmVideoQueue *q,BYTE **pixels_inout,uint32_t width,uint32_t height,int64_t pts,const AwmVideoTiming *timing);
 void awm_video_queue_reconfigure(AwmVideoQueue *q);
 void awm_video_queue_stats(AwmVideoQueue *q,AwmVideoQueueStats *stats);
 void awm_video_queue_destroy(AwmVideoQueue *q);

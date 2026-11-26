@@ -281,7 +281,7 @@ static void paint_surface(AppUI *a,HWND h,HDC dc){
     RECT r;GetClientRect(h,&r);FillRect(dc,&r,a->background);int w=MulDiv(r.right,96,a->dpi),height=MulDiv(r.bottom,96,a->dpi);
     if(h==a->window){RECT nav={0,0,r.right,px(a,42)};FillRect(dc,&nav,a->nav_brush);rule(dc,0,px(a,42)-1,r.right,a->border,false);rule(dc,0,px(a,height-52),r.right,a->border,false);}
     else if(h==a->pages[0]){RECT source={px(a,w-304),px(a,68),r.right,px(a,height-8)};frame(a,dc,source,a->border);rule(dc,0,px(a,height-134),px(a,w-328),a->border,false);}
-    else if(h==a->pages[1]){rule(dc,0,px(a,height-159),r.right,a->border,false);}
+    else if(h==a->pages[1]){rule(dc,0,px(a,height-163),r.right,a->border,false);}
     else if(h==a->settings_pages[0]){
         rule(dc,px(a,(w<980?420:460)+14),px(a,6),px(a,height-32),a->border,true);frame(a,dc,a->settings_sections[0],a->border);
         rule(dc,a->settings_sections[0].left+px(a,12),px(a,180),a->settings_sections[0].right-px(a,12),a->border,false);

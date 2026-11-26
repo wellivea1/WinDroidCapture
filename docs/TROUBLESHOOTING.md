@@ -24,7 +24,7 @@
 3. Compare the integrated preview with the explicit receiver at known dimensions. Discord's self-view and negotiation are independent.
 4. Use the [numeric tracing procedure](PERFORMANCE.md) to distinguish packet arrival, decode/conversion, queue wait, preview submissions and receiver cadence. A timing graph does not include sensor or monitor scanout latency.
 
-GPU decode/direct-surface transport and full A/V clock validation remain work. Micro-stutters have been reduced in some traces, but final Discord smoothness has not been approved.
+D3D11VA hardware decode, GPU YUV/rotate/NV12 conversion, shared-memory camera transport, and zero-copy pacing are implemented, reducing pipeline overhead and stutter. Full A/V clock validation and final real-device Discord smoothness sign-off remain work in progress.
 
 ## Export useful diagnostics
 

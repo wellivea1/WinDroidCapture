@@ -104,7 +104,7 @@ static const BYTE *map_shm(Stream *s,UINT32 pid,UINT32 id){
 static const BYTE *read_pixels(Stream *s,UINT32 width,UINT32 height,UINT32 format,DWORD bytes){
     if(!s->pipe){close_shm(s);s->pipe=CreateFileW(AWM_CAMERA_PIPE,GENERIC_READ|GENERIC_WRITE,0,NULL,OPEN_EXISTING,FILE_FLAG_OVERLAPPED,NULL);if(s->pipe==INVALID_HANDLE_VALUE){s->pipe=NULL;return NULL;}}
     AwmCameraRequest q={AWM_FRAME_MAGIC,AWM_CAMERA_VERSION_V3,width,height,format};AwmCameraReplyV3 r3={0};
-    bool ok=awm_pipe_io_ev(s->pipe,&q,sizeof(q),true,s->cancel,250,s->io_event)&&awm_pipe_io_ev(s->pipe,&r3,sizeof(r3),false,s->cancel,250,s->io_event);
+    bool ok=awm_pipe_io_ev(s->pipe,&q,sizeof(q),true,s->cancel,1000,s->io_event)&&awm_pipe_io_ev(s->pipe,&r3,sizeof(r3),false,s->cancel,1000,s->io_event);
     if(ok)ok=r3.base.magic==AWM_FRAME_MAGIC&&r3.base.version==AWM_CAMERA_VERSION_V3&&r3.base.width==width&&r3.base.height==height&&r3.base.format==format;
     if(!ok){close_shm(s);CancelIoEx(s->pipe,NULL);CloseHandle(s->pipe);s->pipe=NULL;return NULL;}
     if(!r3.base.live){
@@ -118,7 +118,7 @@ static const BYTE *read_pixels(Stream *s,UINT32 width,UINT32 height,UINT32 forma
     }
     if(r3.base.bytes==bytes){
         if(s->frame_cap<bytes){BYTE *next=malloc(bytes);if(!next){CancelIoEx(s->pipe,NULL);CloseHandle(s->pipe);s->pipe=NULL;return NULL;}free(s->frame_buf);s->frame_buf=next;s->frame_cap=bytes;}
-        if(awm_pipe_io_ev(s->pipe,s->frame_buf,bytes,false,s->cancel,250,s->io_event))return s->frame_buf;
+        if(awm_pipe_io_ev(s->pipe,s->frame_buf,bytes,false,s->cancel,1000,s->io_event))return s->frame_buf;
     }
     close_shm(s);CancelIoEx(s->pipe,NULL);CloseHandle(s->pipe);s->pipe=NULL;return NULL;
 }
@@ -164,7 +164,7 @@ static DWORD WINAPI stream_worker(void *context){
     while(WaitForSingleObject(s->cancel,0)!=WAIT_OBJECT_0){
         HANDLE waits[]={s->cancel,s->wake};if(WaitForMultipleObjects(2,waits,FALSE,1000)==WAIT_OBJECT_0)break;
         for(;;){EnterCriticalSection(&s->lock);if(s->shutdown||s->state!=MF_STREAM_STATE_RUNNING||!s->count){LeaveCriticalSection(&s->lock);break;}
-            IUnknown *token=s->tokens[s->head];s->tokens[s->head]=NULL;s->head=(s->head+1)%32;s->count--;LONGLONG now=awm_pacer_now(),due=s->next_time;if(due<now-10000000/s->fps)due=now;s->next_time=due+10000000/s->fps;LeaveCriticalSection(&s->lock);
+            IUnknown *token=s->tokens[s->head];s->tokens[s->head]=NULL;s->head=(s->head+1)%32;s->count--;LONGLONG period=10000000/s->fps,now=awm_pacer_now(),due=s->next_time;if(due<now-period/2)due=now;s->next_time=due+period;LeaveCriticalSection(&s->lock);
             int paced=awm_pacer_wait(s->timer,s->cancel,due);if(paced<=0){RELEASE(token);if(paced<0)IMFMediaEventQueue_QueueEventParamVar(s->events,MEError,&GUID_NULL,HRESULT_FROM_WIN32(GetLastError()),NULL);break;}
             UINT32 width=0,height=0,fps=30,format=2;IMFVideoSampleAllocator *allocator=NULL;BOOL active=FALSE;
             EnterCriticalSection(&s->lock);

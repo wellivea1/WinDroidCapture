@@ -17,7 +17,7 @@ struct NativeManager {
     volatile LONG quit,stop,epoch,adb_protocol_atomic,tracker_connected,discover_needed;volatile LONG64 revision;
     NativeCommand queue[8];int count;NativeView view,shared;
     Process capture,host;AwmHub hub;Device selected;NativeCaptureProfile profile;wchar_t directory[AWM_PATH],settings_path[AWM_PATH];
-    int adb_protocol;ULONGLONG discover_at,outputs_at,start_at,retry_at,unlive_since;unsigned retries;bool desired,injected;
+    int adb_protocol;ULONGLONG discover_at,outputs_at,start_at,retry_at,unlive_since;unsigned retries,discover_failures;bool desired,injected;
     long zoom_milli,pan_x_milli,pan_y_milli;
     char last_guard_error[2048];
 };
@@ -48,7 +48,7 @@ static void stop(NativeManager *m,const char *why,bool failed){
     if(m->hub.view)awm_hub_stop(&m->hub);process_close(&m->host);process_close(&m->capture);
     AwmHub closing;EnterCriticalSection(&m->lock);closing=m->hub;memset(&m->hub,0,sizeof(m->hub));LeaveCriticalSection(&m->lock);
     awm_hub_close(&closing);
-    m->unlive_since=0;
+    m->unlive_since=0;m->discover_failures=0;
     m->view.active=false;m->view.busy=false;m->view.source_live=m->view.microphone_forwarding=false;m->view.phase=failed?N_ERROR:N_IDLE;m->view.mapping_name[0]=0;m->view.peak=0;m->view.active_serial[0]=m->view.active_transport[0]=0;m->view.request_width=m->view.request_height=m->view.request_format=0;m->view.camera_requests=m->view.repeated_samples=0;
     awm_copy(m->view.camera_status,512,why);awm_copy(m->view.mic_status,512,"Phone microphone stopped; driver queue resets on producer close.");
     if(failed&&m->desired&&m->profile.reconnect&&m->retries<3){m->retry_at=GetTickCount64()+3000;m->retries++;m->view.phase=N_RECONNECTING;}else{m->desired=false;m->retry_at=0;}notice(m,why);
@@ -130,7 +130,17 @@ static DWORD WINAPI adb_tracker_proc(void *context){
 static void discover(NativeManager *m,bool periodic){
     m->discover_at=GetTickCount64()+(InterlockedCompareExchange(&m->tracker_connected,0,0)?15000:3000);
     if(!guard_checked(m,periodic))return;Arguments *a=calloc(1,sizeof(*a));DeviceList *list=calloc(1,sizeof(*list));char *out=calloc(AWM_TEXT,1);if(!a||!list||!out)goto done;
-    adb_args(m,a,NULL);args_add(a,L"devices");args_add(a,L"-l");if(!run(m,a,NULL,out,AWM_TEXT,3000)||!parse_adb_devices(out,list)){if(!m->stop&&WaitForSingleObject(m->cancel,0)!=WAIT_OBJECT_0&&m->view.active)stop(m,"ADB discovery failed; phone outputs stopped.",true);goto done;}
+    adb_args(m,a,NULL);args_add(a,L"devices");args_add(a,L"-l");
+    if(!run_quiet(m,a,NULL,out,AWM_TEXT,3000,periodic&&m->view.active&&m->view.source_live&&m->discover_failures==0)||!parse_adb_devices(out,list)){
+        if(!m->stop&&WaitForSingleObject(m->cancel,0)!=WAIT_OBJECT_0&&m->view.active){
+            /* Tolerate one transient adb-devices timeout while video frames are
+               actively arriving; stop immediately on a second failure or unlive stream. */
+            if(periodic&&m->view.source_live&&++m->discover_failures<2){m->discover_at=GetTickCount64()+1500;log_text(m,"Transient ADB discovery timeout during live stream; retrying before stopping.");goto done;}
+            stop(m,"ADB discovery failed; phone outputs stopped.",true);
+        }
+        goto done;
+    }
+    m->discover_failures=0;
     for(int i=0;i<list->count;i++){Device *d=&list->items[i];int old=find_device(&m->view.devices,d->serial,d->transport_id);if(d->state==DEV_AUTHORIZED){if(old>=0&&m->view.devices.items[old].sdk){d->sdk=m->view.devices.items[old].sdk;awm_copy(d->android,64,m->view.devices.items[old].android);}else{adb_args(m,a,d);args_add(a,L"shell");args_add(a,L"getprop");args_add(a,L"ro.build.version.sdk");if(run(m,a,NULL,out,AWM_TEXT,1500))d->sdk=atoi(out);a->count--;args_add(a,L"ro.build.version.release");if(run(m,a,NULL,out,AWM_TEXT,1500)){out[strcspn(out,"\r\n")]=0;awm_copy(d->android,64,out);}}}}
     merge_devices(&m->view.devices,list);if(m->view.active){int i=find_device(list,m->selected.serial,m->selected.transport_id);if(i<0||list->items[i].state!=DEV_AUTHORIZED)stop(m,"Selected phone disconnected or lost authorization.",true);}publish(m);
 done:free(a);free(list);free(out);
@@ -192,7 +202,7 @@ static void start(NativeManager *m,Device d,NativeCaptureProfile p,LONG epoch){
         ok=m->hub.view!=NULL&&WaitForSingleObject(m->cancel,0)!=WAIT_OBJECT_0;}
     if(ok)ok=process_start(&m->capture,a,m->view.settings.adb,NULL,true,err,sizeof(err));free(a);
     if(!ok||epoch!=m->epoch||WaitForSingleObject(m->cancel,0)==WAIT_OBJECT_0){stop(m,err[0]?err:"Start cancelled or media host did not become ready.",false);return;}
-    m->selected=d;m->profile=p;m->start_at=GetTickCount64();m->unlive_since=0;m->view.active=true;m->view.active_kind=p.kind;m->view.receiver_checked=false;m->view.frames=m->view.audio_samples=0;
+    m->selected=d;m->profile=p;m->start_at=GetTickCount64();m->unlive_since=0;m->discover_failures=0;m->view.active=true;m->view.active_kind=p.kind;m->view.receiver_checked=false;m->view.frames=m->view.audio_samples=0;
     awm_copy(m->view.active_serial,256,d.serial);awm_copy(m->view.active_transport,32,d.transport_id);native_capture_set(&m->view.settings,d.serial,&p);save_settings(m);
     notice(m,p.kind==CAPTURE_SCREEN?"Starting selected phone display. Receiver delivery is a separate test.":"Starting selected phone camera. Receiver delivery is a separate test.");publish(m);
 }
@@ -355,6 +365,17 @@ static DWORD WINAPI worker(void *context){
             m->retry_at=0;
             if(m->desired&&!m->stop){
                 int i=find_reconnect_device(&m->view.devices,&m->selected);
+                if(i<0&&m->selected.transport==TRANSPORT_WIRELESS){
+                    /* Wireless ADB endpoints drop out of `adb devices` after a Wi-Fi blip
+                       until re-attached. Re-connect strictly to the exact same selected address. */
+                    wchar_t waddr[320];utf8_to_wide(m->selected.serial,waddr,320);
+                    if(valid_wireless_address(waddr)&&guard_checked(m,true)){
+                        Arguments *ca=calloc(1,sizeof(*ca));char cout[1024]={0};
+                        if(ca){adb_args(m,ca,NULL);args_add(ca,L"connect");args_add(ca,waddr);run_quiet(m,ca,NULL,cout,sizeof(cout),4000,true);free(ca);}
+                        discover(m,true);
+                        i=find_reconnect_device(&m->view.devices,&m->selected);
+                    }
+                }
                 if(i>=0){
                     Device matched=m->view.devices.items[i];
                     bool changed=strcmp(matched.transport_id,m->selected.transport_id)!=0||!capabilities_ready(m,&matched,m->profile.kind);

@@ -14,9 +14,18 @@ static int fake(int argc,wchar_t **args){
         else if(has(argc,args,L"help"))puts("pair HOST[:PORT]\nmdns services");
         else if(has(argc,args,L"mdns"))puts("List of discovered mdns services\nadb-FAKE-pair\t_adb-tls-pairing._tcp\t192.168.0.132:37111\nadb-FAKE-1234\t_adb-tls-connect._tcp\t192.168.0.132:46875");
         else if(has(argc,args,L"pair"))puts("Successfully paired to 192.168.0.132:37111");
-        else if(has(argc,args,L"connect"))puts("connected to 192.168.0.132:46875");
-        else if(has(argc,args,L"devices")){wchar_t offline[4],replug[4];
-            if(GetEnvironmentVariableW(L"AWM_TEST_OFFLINE",offline,4))puts("List of devices attached\nFIRST device model:Same transport_id:7\nSELECTED offline model:Same transport_id:8");
+        else if(has(argc,args,L"connect")){
+            wchar_t drop_marker[AWM_PATH];
+            if(GetEnvironmentVariableW(L"AWM_TEST_WIRELESS_DROPPED",drop_marker,AWM_PATH)&&has(argc,args,L"192.168.0.132:46875"))DeleteFileW(drop_marker);
+            puts("connected to 192.168.0.132:46875");
+        }
+        else if(has(argc,args,L"devices")){wchar_t offline[4],replug[4],wireless[4],marker[AWM_PATH];
+            if(GetEnvironmentVariableW(L"AWM_TEST_ADB_FAIL_ONCE",marker,AWM_PATH)&&GetFileAttributesW(marker)!=INVALID_FILE_ATTRIBUTES){DeleteFileW(marker);return 1;}
+            if(GetEnvironmentVariableW(L"AWM_TEST_WIRELESS",wireless,4)){
+                if(GetEnvironmentVariableW(L"AWM_TEST_WIRELESS_DROPPED",marker,AWM_PATH)&&GetFileAttributesW(marker)!=INVALID_FILE_ATTRIBUTES)puts("List of devices attached\nFIRST offline model:Same transport_id:7");
+                else puts("List of devices attached\nFIRST offline model:Same transport_id:7\n192.168.0.132:46875 device model:Pixel transport_id:12");
+            }
+            else if(GetEnvironmentVariableW(L"AWM_TEST_OFFLINE",offline,4))puts("List of devices attached\nFIRST device model:Same transport_id:7\nSELECTED offline model:Same transport_id:8");
             else if(GetEnvironmentVariableW(L"AWM_TEST_REPLUG",replug,4))puts("List of devices attached\nFIRST offline model:Same transport_id:7\nSELECTED device usb:2 model:Same transport_id:9");
             else puts("List of devices attached\nFIRST offline model:Same transport_id:7\nSELECTED device usb:1 model:Same transport_id:8");
         }
@@ -132,9 +141,39 @@ int wmain(int argc,wchar_t **args){
     SetEnvironmentVariableW(L"AWM_TEST_OFFLINE",NULL);SetEnvironmentVariableW(L"AWM_TEST_REPLUG",L"1");c->action=N_REFRESH;CHECK(native_manager_send(m,c));
     CHECK(wait_state(m,v,1,8000));CHECK(!strcmp(v->active_serial,"SELECTED")&&!strcmp(v->active_transport,"9")&&v->phase==N_RUNNING);
     SetEnvironmentVariableW(L"AWM_TEST_REPLUG",NULL);c->action=N_STOP;CHECK(native_manager_send(m,c));CHECK(wait_state(m,v,2,5000));
+    /* Refresh back to transport_id:8 after replug test before testing transient ADB failure. */
+    c->action=N_REFRESH;CHECK(native_manager_send(m,c));
+    {ULONGLONG end=GetTickCount64()+5000;bool back=false;while(GetTickCount64()<end){native_manager_snapshot(m,v);int idx=find_device(&v->devices,"SELECTED","8");if(!v->busy&&idx>=0&&v->devices.items[idx].state==DEV_AUTHORIZED){c->device=v->devices.items[idx];back=true;break;}Sleep(20);}CHECK(back);}
+    /* One transient periodic `adb devices -l` failure while frames are live must not kill capture. */
+    wchar_t fail_marker[AWM_PATH];swprintf(fail_marker,AWM_PATH,L"%s\\adb-fail-once.tmp",dir);
+    c->capture.kind=CAPTURE_CAMERA;c->action=N_PROBE;CHECK(native_manager_send(m,c));CHECK(wait_state(m,v,3,5000));
+    native_capture_default(&c->capture,CAPTURE_CAMERA,0);awm_copy(c->capture.camera.id,80,"5");c->capture.audio=false;c->use_capture=true;c->action=N_START;
+    CHECK(native_manager_send(m,c)&&wait_state(m,v,1,5000));
+    {HANDLE mf=CreateFileW(fail_marker,GENERIC_WRITE,0,NULL,CREATE_ALWAYS,0,NULL);if(mf!=INVALID_HANDLE_VALUE)CloseHandle(mf);}
+    SetEnvironmentVariableW(L"AWM_TEST_ADB_FAIL_ONCE",fail_marker);
+    {ULONGLONG end=GetTickCount64()+6000;bool hit=false;while(GetTickCount64()<end){if(GetFileAttributesW(fail_marker)==INVALID_FILE_ATTRIBUTES){hit=true;break;}Sleep(50);}CHECK(hit);}
+    Sleep(2000);native_manager_snapshot(m,v);CHECK(v->active&&v->source_live&&v->phase==N_RUNNING);
+    SetEnvironmentVariableW(L"AWM_TEST_ADB_FAIL_ONCE",NULL);DeleteFileW(fail_marker);
+    c->action=N_STOP;CHECK(native_manager_send(m,c));CHECK(wait_state(m,v,2,5000));
+    /* Opt-in wireless reconnect must issue `adb connect <selected.serial>` and recover the same endpoint. */
+    wchar_t drop_marker[AWM_PATH];swprintf(drop_marker,AWM_PATH,L"%s\\wireless-drop.tmp",dir);
+    SetEnvironmentVariableW(L"AWM_TEST_WIRELESS",L"1");SetEnvironmentVariableW(L"AWM_TEST_WIRELESS_DROPPED",drop_marker);
+    c->action=N_REFRESH;CHECK(native_manager_send(m,c));
+    {ULONGLONG end=GetTickCount64()+5000;bool saw=false;while(GetTickCount64()<end){native_manager_snapshot(m,v);int idx=find_device(&v->devices,"192.168.0.132:46875","12");if(!v->busy&&idx>=0&&v->devices.items[idx].state==DEV_AUTHORIZED){c->device=v->devices.items[idx];saw=true;break;}Sleep(20);}CHECK(saw);}
+    CHECK(c->device.transport==TRANSPORT_WIRELESS);
+    c->capture.kind=CAPTURE_CAMERA;c->action=N_PROBE;CHECK(native_manager_send(m,c));CHECK(wait_state(m,v,3,5000));
+    native_capture_default(&c->capture,CAPTURE_CAMERA,0);awm_copy(c->capture.camera.id,80,"5");c->capture.audio=false;c->capture.reconnect=true;c->use_capture=true;c->action=N_START;
+    CHECK(native_manager_send(m,c)&&wait_state(m,v,1,5000));CHECK(!strcmp(v->active_serial,"192.168.0.132:46875"));
+    {HANDLE mf=CreateFileW(drop_marker,GENERIC_WRITE,0,NULL,CREATE_ALWAYS,0,NULL);if(mf!=INVALID_HANDLE_VALUE)CloseHandle(mf);}
+    c->action=N_REFRESH;CHECK(native_manager_send(m,c));
+    {ULONGLONG end=GetTickCount64()+6000;bool retrying=false;while(GetTickCount64()<end){native_manager_snapshot(m,v);if(v->phase==N_RECONNECTING&&!v->active){retrying=true;break;}Sleep(20);}CHECK(retrying);}
+    CHECK(wait_state(m,v,1,8000));
+    CHECK(GetFileAttributesW(drop_marker)==INVALID_FILE_ATTRIBUTES&&!strcmp(v->active_serial,"192.168.0.132:46875")&&v->phase==N_RUNNING);
+    SetEnvironmentVariableW(L"AWM_TEST_WIRELESS_DROPPED",NULL);SetEnvironmentVariableW(L"AWM_TEST_WIRELESS",NULL);DeleteFileW(drop_marker);
+    c->action=N_STOP;CHECK(native_manager_send(m,c));CHECK(wait_state(m,v,2,5000));
     native_manager_destroy(m);
     /* Remove only explicitly created files; no recursive path deletion. */
     for(int i=0;i<4;i++){swprintf(p,AWM_PATH,L"%s\\%s",dir,files[i]);DeleteFileW(p);}DeleteFileW(settings);RemoveDirectoryW(dir);
-    printf("SIMULATED integration: %d checks, %d failures. Safe Unicode subprocesses, single-pass dual-source probe, live transform, atomic restart, structured mDNS + pair-connect, USB replug reconnect. No physical delivery assertion.\n",checks,failed);
+    printf("SIMULATED integration: %d checks, %d failures. Safe Unicode subprocesses, single-pass dual-source probe, live transform, atomic restart, structured mDNS + pair-connect, USB replug reconnect, transient ADB tolerance, wireless ADB reconnect. No physical delivery assertion.\n",checks,failed);
     free(v);free(c);CoUninitialize();platform_shutdown();return failed?1:0;
 }

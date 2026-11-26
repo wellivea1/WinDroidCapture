@@ -46,7 +46,7 @@ bool awm_hub_live(const AwmHub *h,uint64_t now){
     int i=(int)InterlockedCompareExchange(&h->view->published,0,0);
     if(i<0||i>=2)return false;
     uint64_t slot_hb=*(volatile const uint64_t *)&h->view->slots[i].heartbeat_ms;
-    return h->view->source_kind==1||(slot_hb&&age_ms(now,slot_hb)<=1000);
+    return h->view->source_kind==1||(slot_hb&&age_ms(now,slot_hb)<=2500);
 }
 void awm_hub_reconfigure(AwmHub *h){if(h->view){InterlockedExchange(&h->view->live,0);h->view->video_epoch++;if(h->ready)SetEvent(h->ready);}}
 void awm_hub_close(AwmHub *h){if(h->stop_event)CloseHandle(h->stop_event);if(h->ready)CloseHandle(h->ready);if(h->view)UnmapViewOfFile(h->view);if(h->mapping)CloseHandle(h->mapping);memset(h,0,sizeof(*h));}
@@ -64,7 +64,7 @@ bool awm_hub_copy_frame(AwmHub *h,uint8_t *p,size_t cap,AwmFrameInfo *info){
     for(int tries=0;tries<3;tries++){
         int index=(int)InterlockedCompareExchange(&h->view->published,0,0);if(index<0||index>1)return false;AwmFrameSlot *s=&h->view->slots[index];LONG seq=InterlockedCompareExchange(&s->sequence,0,0);
         if(seq&1)continue;uint32_t sw=s->width,sh=s->height;uint64_t tick=s->heartbeat_ms;
-        if(!awm_frame_shape(sw,sh)||cap<(size_t)sw*sh*4||(h->view->source_kind!=1&&age_ms(GetTickCount64(),tick)>1000)||s->epoch!=h->view->video_epoch)return false;
+        if(!awm_frame_shape(sw,sh)||cap<(size_t)sw*sh*4||(h->view->source_kind!=1&&age_ms(GetTickCount64(),tick)>2500)||s->epoch!=h->view->video_epoch)return false;
         AwmFrameInfo copied={sw,sh,s->epoch,s->frame_number,tick,s->pts_us};memcpy(p,s->pixels,(size_t)sw*sh*4);MemoryBarrier();
         if(seq==InterlockedCompareExchange(&s->sequence,0,0)&&s->epoch==h->view->video_epoch&&awm_hub_live(h,GetTickCount64())){*info=copied;return true;}
     }return false;
